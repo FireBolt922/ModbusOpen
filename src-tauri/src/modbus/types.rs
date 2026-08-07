@@ -228,3 +228,21 @@ pub struct PollStats {
     pub actual_rate_hz: f64,
     pub last_error: Option<String>,
 }
+
+/// Transient poll failure — poll continues. Carries `session_id` so the UI can
+/// drop events from a torn-down connection, and `stats` so the footer stays live.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PollErrorEvent {
+    pub session_id: u64,
+    pub message: String,
+    pub stats: PollStats,
+}
+
+/// Fatal transport failure — the poll task is stopping.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionLostEvent {
+    pub session_id: u64,
+    pub message: String,
+}

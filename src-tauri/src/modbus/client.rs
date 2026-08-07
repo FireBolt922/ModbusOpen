@@ -18,6 +18,7 @@ use crate::error::{exception_name_and_hint, AppError};
 /// Outcome of a single read. Distinguishes "device answered with an error"
 /// (not fatal — keep polling) from "the transport is dead" (fatal — the poll
 /// task must stop).
+#[derive(Debug)]
 pub enum ReadError {
     Exception {
         code: u8,
@@ -123,5 +124,62 @@ impl ModbusClient {
     pub async fn disconnect(mut self) {
         use tokio_modbus::client::Client;
         let _ = self.ctx.disconnect().await;
+    }
+}
+
+#[cfg(test)]
+mod smoke {
+    use super::*;
+    use crate::modbus::codec::decode_block;
+    use crate::modbus::types::{DataFormat, DataType, TypedValue, WordOrder};
+
+    /// Live smoke against `testrig/slave.py` on :5020. Skips quietly if the
+    /// slave isn't running so `cargo test` stays green offline.
+    #[tokio::test]
+    async fn tcp_read_float32_cdab_against_local_slave() {
+        let config = TcpConfig {
+            host: "127.0.0.1".into(),
+            port: 5020,
+            unit_id: 1,
+            timeout_ms: 1000,
+            retries: 1,
+        };
+        let mut client = match ModbusClient::connect_tcp(&config).await {
+            Ok(c) => c,
+            Err(_) => {
+                eprintln!("skipping: no slave on 127.0.0.1:5020");
+                return;
+            }
+        };
+
+        let regs = client
+            .read_registers(FunctionCode::ReadHoldingRegisters, 100, 8, 1)
+            .await
+            .expect("read unit 1");
+        let format = DataFormat {
+            data_type: DataType::Float32,
+            word_order: WordOrder::Cdab,
+            scale: 1.0,
+            offset: 0.0,
+        };
+        let rows = decode_block(&regs, 100, &format);
+        assert_eq!(rows.len(), 4);
+        match &rows[0].value {
+            TypedValue::Float(v) => assert!((v - 231.0).abs() < 0.01, "voltage={v}"),
+            other => panic!("expected float, got {other:?}"),
+        }
+        match &rows[3].value {
+            TypedValue::Float(v) => assert!((v - 0.975).abs() < 0.001, "pf={v}"),
+            other => panic!("expected float, got {other:?}"),
+        }
+
+        // Unit 2: every register is 7 — proves mid-session unit-ID switch.
+        let regs2 = client
+            .read_registers(FunctionCode::ReadHoldingRegisters, 0, 4, 2)
+            .await
+            .expect("read unit 2");
+        assert_eq!(regs2, vec![7, 7, 7, 7]);
+
+        client.disconnect().await;
     }
 }

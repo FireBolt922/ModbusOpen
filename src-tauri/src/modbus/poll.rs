@@ -14,7 +14,9 @@ use tokio_util::sync::CancellationToken;
 
 use super::client::{ModbusClient, ReadError};
 use super::codec::decode_block;
-use super::types::{PollConfig, PollResult, PollStats, Transport};
+use super::types::{
+    ConnectionLostEvent, PollConfig, PollErrorEvent, PollResult, PollStats, Transport,
+};
 use crate::error::AppError;
 
 pub enum PollCommand {
@@ -188,9 +190,13 @@ async fn run_poll_loop(
                         let fatal = matches!(&result, Err(ReadOutcome::Fatal(_)));
                         let _ = responder.send(result.map_err(|e| e.into_app_error()));
                         if fatal {
-                            let _ = app.emit("connection-lost", &AppError::ConnectionLost {
-                                reason: "transport closed".to_string(),
-                            });
+                            let _ = app.emit(
+                                "connection-lost",
+                                &ConnectionLostEvent {
+                                    session_id,
+                                    message: "Connection lost — transport closed".to_string(),
+                                },
+                            );
                             break;
                         }
                     }
@@ -205,10 +211,23 @@ async fn run_poll_loop(
                         let _ = app.emit("poll-result", &result);
                     }
                     Err(ReadOutcome::Recoverable(err)) => {
-                        let _ = app.emit("poll-error", &err);
+                        let _ = app.emit(
+                            "poll-error",
+                            &PollErrorEvent {
+                                session_id,
+                                message: err.to_string(),
+                                stats: stats.stats.clone(),
+                            },
+                        );
                     }
                     Err(ReadOutcome::Fatal(err)) => {
-                        let _ = app.emit("connection-lost", &err);
+                        let _ = app.emit(
+                            "connection-lost",
+                            &ConnectionLostEvent {
+                                session_id,
+                                message: err.to_string(),
+                            },
+                        );
                         break;
                     }
                 }
