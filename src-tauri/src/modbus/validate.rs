@@ -2,7 +2,7 @@
 //! here saves a full timeout and gives a better message than the resulting
 //! remote exception would. See `docs/reference/function-codes.md`.
 
-use super::types::{PollConfig, RtuConfig, SimulatorConfig, TcpConfig};
+use super::types::{PollConfig, RtuConfig, SimulatorConfig, TagBehavior, TcpConfig};
 use crate::error::AppError;
 
 pub fn validate_tcp_config(config: &TcpConfig) -> Result<(), AppError> {
@@ -117,6 +117,56 @@ pub fn validate_simulator_config(config: &SimulatorConfig) -> Result<(), AppErro
                 slave.unit_id
             )));
         }
+
+        for tag in &slave.tags {
+            if tag.format.data_type == crate::modbus::types::DataType::String {
+                return Err(AppError::InvalidConfig(format!(
+                    "tag '{}': string tags can't be animated",
+                    tag.name
+                )));
+            }
+            if !crate::modbus::animate::tag_fits(
+                tag.address,
+                tag.format.data_type,
+                slave.holding_register_count,
+            ) {
+                return Err(AppError::InvalidConfig(format!(
+                    "tag '{}' at address {} doesn't fit in slave {}'s {}-register holding block",
+                    tag.name, tag.address, slave.unit_id, slave.holding_register_count
+                )));
+            }
+            match tag.behavior {
+                TagBehavior::Random { min, max } | TagBehavior::Ramp { min, max, .. } => {
+                    if min >= max {
+                        return Err(AppError::InvalidConfig(format!(
+                            "tag '{}': min must be less than max",
+                            tag.name
+                        )));
+                    }
+                }
+                TagBehavior::Sine { min, max, period_s } => {
+                    if min >= max {
+                        return Err(AppError::InvalidConfig(format!(
+                            "tag '{}': min must be less than max",
+                            tag.name
+                        )));
+                    }
+                    if period_s <= 0.0 {
+                        return Err(AppError::InvalidConfig(format!(
+                            "tag '{}': period must be greater than 0 seconds",
+                            tag.name
+                        )));
+                    }
+                }
+                TagBehavior::Static | TagBehavior::Counter { .. } => {}
+            }
+        }
+    }
+
+    if config.slaves.iter().any(|s| !s.tags.is_empty()) && config.tick_ms == 0 {
+        return Err(AppError::InvalidConfig(
+            "animation tick interval must be greater than 0 ms".to_string(),
+        ));
     }
 
     Ok(())
@@ -201,14 +251,82 @@ mod tests {
         use crate::modbus::types::SlaveSimConfig;
         SimulatorConfig {
             tcp_port: 5021,
+            tick_ms: 1000,
             slaves: vec![SlaveSimConfig {
                 unit_id: 1,
                 coil_count: 8,
                 discrete_count: 8,
                 input_register_count: 0,
                 holding_register_count: 50,
+                tags: Vec::new(),
             }],
         }
+    }
+
+    fn base_tag(behavior: TagBehavior) -> crate::modbus::types::TagConfig {
+        use crate::modbus::types::{DataFormat, DataType, WordOrder};
+        crate::modbus::types::TagConfig {
+            name: "test".into(),
+            address: 0,
+            format: DataFormat {
+                data_type: DataType::Uint16,
+                word_order: WordOrder::Cdab,
+                scale: 1.0,
+                offset: 0.0,
+            },
+            behavior,
+            initial_value: 0.0,
+        }
+    }
+
+    #[test]
+    fn accepts_a_well_formed_tag() {
+        let mut cfg = base_simulator_config();
+        cfg.slaves[0]
+            .tags
+            .push(base_tag(TagBehavior::Counter { step: 1.0 }));
+        assert!(validate_simulator_config(&cfg).is_ok());
+    }
+
+    #[test]
+    fn rejects_a_tag_whose_span_overruns_the_holding_block() {
+        let mut cfg = base_simulator_config();
+        cfg.slaves[0].holding_register_count = 1;
+        let mut tag = base_tag(TagBehavior::Static);
+        tag.format.data_type = crate::modbus::types::DataType::Float32; // needs 2 regs
+        cfg.slaves[0].tags.push(tag);
+        assert!(validate_simulator_config(&cfg).is_err());
+    }
+
+    #[test]
+    fn rejects_random_with_min_not_less_than_max() {
+        let mut cfg = base_simulator_config();
+        cfg.slaves[0].tags.push(base_tag(TagBehavior::Random {
+            min: 10.0,
+            max: 10.0,
+        }));
+        assert!(validate_simulator_config(&cfg).is_err());
+    }
+
+    #[test]
+    fn rejects_sine_with_zero_period() {
+        let mut cfg = base_simulator_config();
+        cfg.slaves[0].tags.push(base_tag(TagBehavior::Sine {
+            min: 0.0,
+            max: 10.0,
+            period_s: 0.0,
+        }));
+        assert!(validate_simulator_config(&cfg).is_err());
+    }
+
+    #[test]
+    fn rejects_zero_tick_ms_when_tags_are_present() {
+        let mut cfg = base_simulator_config();
+        cfg.slaves[0]
+            .tags
+            .push(base_tag(TagBehavior::Counter { step: 1.0 }));
+        cfg.tick_ms = 0;
+        assert!(validate_simulator_config(&cfg).is_err());
     }
 
     #[test]

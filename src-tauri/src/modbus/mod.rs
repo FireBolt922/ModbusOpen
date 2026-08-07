@@ -1,3 +1,4 @@
+pub mod animate;
 pub mod client;
 pub mod codec;
 pub mod frame;

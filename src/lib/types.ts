@@ -172,17 +172,35 @@ export type WriteResult = {
   quantity: number;
 };
 
+export type TagBehavior =
+  | { kind: "static" }
+  | { kind: "random"; min: number; max: number }
+  | { kind: "ramp"; min: number; max: number; step: number }
+  | { kind: "sine"; min: number; max: number; periodS: number }
+  | { kind: "counter"; step: number };
+
+/** Only holding-register tags are animatable in v1 — see modbus/animate.rs. */
+export type TagConfig = {
+  name: string;
+  address: number;
+  format: DataFormat;
+  behavior: TagBehavior;
+  initialValue: number;
+};
+
 export type SlaveSimConfig = {
   unitId: number;
   coilCount: number;
   discreteCount: number;
   inputRegisterCount: number;
   holdingRegisterCount: number;
+  tags: TagConfig[];
 };
 
 export type SimulatorConfig = {
   tcpPort: number;
   slaves: SlaveSimConfig[];
+  tickMs: number;
 };
 
 export type SimulatorInfo = {

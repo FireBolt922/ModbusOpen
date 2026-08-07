@@ -4,7 +4,16 @@ import type {
   SimulatorInfo,
   SimulatorSnapshot,
   SlaveSimConfig,
+  TagConfig,
 } from "@/lib/types";
+
+export const DEFAULT_TAG_CONFIG: TagConfig = {
+  name: "tag",
+  address: 0,
+  format: { dataType: "uint16", wordOrder: "cdab", scale: 1, offset: 0 },
+  behavior: { kind: "static" },
+  initialValue: 0,
+};
 
 export const DEFAULT_SLAVE_CONFIG: SlaveSimConfig = {
   unitId: 1,
@@ -12,10 +21,12 @@ export const DEFAULT_SLAVE_CONFIG: SlaveSimConfig = {
   discreteCount: 16,
   inputRegisterCount: 0,
   holdingRegisterCount: 50,
+  tags: [],
 };
 
 export const DEFAULT_SIMULATOR_CONFIG: SimulatorConfig = {
   tcpPort: 5021,
+  tickMs: 1000,
   slaves: [{ ...DEFAULT_SLAVE_CONFIG }],
 };
 
@@ -29,6 +40,9 @@ type SimulatorState = {
   addSlave: () => void;
   removeSlave: (unitId: number) => void;
   updateSlave: (unitId: number, patch: Partial<SlaveSimConfig>) => void;
+  addTag: (unitId: number) => void;
+  removeTag: (unitId: number, index: number) => void;
+  updateTag: (unitId: number, index: number, patch: Partial<TagConfig>) => void;
   setStarting: (v: boolean) => void;
   setInfo: (info: SimulatorInfo | null) => void;
   applySnapshot: (snapshot: SimulatorSnapshot) => void;
@@ -38,6 +52,7 @@ type SimulatorState = {
 export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   config: {
     tcpPort: DEFAULT_SIMULATOR_CONFIG.tcpPort,
+    tickMs: DEFAULT_SIMULATOR_CONFIG.tickMs,
     slaves: [{ ...DEFAULT_SLAVE_CONFIG }],
   },
   info: null,
@@ -54,7 +69,10 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       return {
         config: {
           ...s.config,
-          slaves: [...s.config.slaves, { ...DEFAULT_SLAVE_CONFIG, unitId: nextId }],
+          slaves: [
+            ...s.config.slaves,
+            { ...DEFAULT_SLAVE_CONFIG, unitId: nextId, tags: [] },
+          ],
         },
       };
     }),
@@ -73,6 +91,47 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
         ...s.config,
         slaves: s.config.slaves.map((sl) =>
           sl.unitId === unitId ? { ...sl, ...patch } : sl,
+        ),
+      },
+    })),
+
+  addTag: (unitId) =>
+    set((s) => ({
+      config: {
+        ...s.config,
+        slaves: s.config.slaves.map((sl) =>
+          sl.unitId === unitId
+            ? { ...sl, tags: [...sl.tags, { ...DEFAULT_TAG_CONFIG }] }
+            : sl,
+        ),
+      },
+    })),
+
+  removeTag: (unitId, index) =>
+    set((s) => ({
+      config: {
+        ...s.config,
+        slaves: s.config.slaves.map((sl) =>
+          sl.unitId === unitId
+            ? { ...sl, tags: sl.tags.filter((_, i) => i !== index) }
+            : sl,
+        ),
+      },
+    })),
+
+  updateTag: (unitId, index, patch) =>
+    set((s) => ({
+      config: {
+        ...s.config,
+        slaves: s.config.slaves.map((sl) =>
+          sl.unitId === unitId
+            ? {
+                ...sl,
+                tags: sl.tags.map((t, i) =>
+                  i === index ? { ...t, ...patch } : t,
+                ),
+              }
+            : sl,
         ),
       },
     })),

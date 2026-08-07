@@ -18,8 +18,9 @@ use tokio_modbus::server::Service;
 use tokio_modbus::{ExceptionCode, Request, Response, SlaveRequest};
 use tokio_util::sync::CancellationToken;
 
+use super::animate::AnimationEngine;
 use super::store::ModbusStore;
-use super::types::{SimulatorSnapshot, SlaveSnapshot};
+use super::types::{SimulatorSnapshot, SlaveSnapshot, TagConfig};
 
 fn mutates_store(req: &Request<'_>) -> bool {
     matches!(
@@ -127,7 +128,7 @@ pub struct SimulatorServer {
     session_id: u64,
     tcp_port: u16,
     cancel: CancellationToken,
-    task: tokio::task::JoinHandle<()>,
+    tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl SimulatorServer {
@@ -169,8 +170,45 @@ impl SimulatorServer {
             session_id,
             tcp_port,
             cancel,
-            task,
+            tasks: vec![task],
         })
+    }
+
+    /// Starts the tag-animation ticker, if there's anything to animate.
+    /// Shares this server's cancellation token, so `shutdown()` stops it
+    /// along with the accept loop.
+    pub fn start_animation<R: Runtime>(
+        &mut self,
+        app: AppHandle<R>,
+        tags: Vec<(u8, TagConfig)>,
+        tick_ms: u64,
+    ) {
+        let mut engine = AnimationEngine::new(tags);
+        if engine.is_empty() {
+            return;
+        }
+        let store = self.store.clone();
+        let session_id = self.session_id;
+        let tcp_port = self.tcp_port;
+        let cancel = self.cancel.clone();
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(tick_ms.max(1)));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+        let task = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    () = cancel.cancelled() => break,
+                    _ = interval.tick() => {
+                        engine.tick(&store);
+                        let _ = app.emit(
+                            "sim-update",
+                            build_snapshot(&store, session_id, tcp_port),
+                        );
+                    }
+                }
+            }
+        });
+        self.tasks.push(task);
     }
 
     pub fn store(&self) -> Arc<ModbusStore> {
@@ -191,7 +229,9 @@ impl SimulatorServer {
 
     pub async fn shutdown(self) {
         self.cancel.cancel();
-        let _ = self.task.await;
+        for task in self.tasks {
+            let _ = task.await;
+        }
     }
 }
 
@@ -389,6 +429,61 @@ mod tests {
             crate::modbus::client::ReadError::Exception { code, .. } => assert_eq!(code, 2),
             other => panic!("expected exception 2 (illegal data address), got {other:?}"),
         }
+
+        client.disconnect().await;
+        server.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn animated_tag_is_visible_to_an_external_client_and_keeps_ticking() {
+        use crate::modbus::types::{DataFormat, DataType, TagBehavior, TagConfig, WordOrder};
+
+        let app = test_app();
+        let (mut server, port) = start_test_server(&app, &[(1, layout(4))]).await;
+        server.start_animation(
+            app.handle().clone(),
+            vec![(
+                1,
+                TagConfig {
+                    name: "counter".into(),
+                    address: 0,
+                    format: DataFormat {
+                        data_type: DataType::Uint16,
+                        word_order: WordOrder::Cdab,
+                        scale: 1.0,
+                        offset: 0.0,
+                    },
+                    behavior: TagBehavior::Counter { step: 1.0 },
+                    initial_value: 0.0,
+                },
+            )],
+            20,
+        );
+
+        let mut client = connect(port, 1).await;
+        let mut first: Option<u16> = None;
+        let mut saw_increase = false;
+        for _ in 0..50 {
+            let regs = client
+                .read_registers(
+                    crate::modbus::types::FunctionCode::ReadHoldingRegisters,
+                    0,
+                    1,
+                    1,
+                )
+                .await
+                .unwrap();
+            match first {
+                None => first = Some(regs[0]),
+                Some(f) if regs[0] > f => {
+                    saw_increase = true;
+                    break;
+                }
+                _ => {}
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(saw_increase, "counter tag never incremented");
 
         client.disconnect().await;
         server.shutdown().await;

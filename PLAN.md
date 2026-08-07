@@ -167,6 +167,30 @@ on this machine but `diagslave`/`mbpoll` are not, so the RTU virtual-serial-pair
 `docs/06-testing.md` hasn't been executed this session. No real RS-485 hardware check either
 (required by AGENTS.md before signing off M2). Leave unchecked.
 
+**Status note 2 (2026-08-07) — pre-field-test hardening pass:** since diagslave isn't installable
+here, wrote `testrig/rtu_slave.py` (a pymodbus RTU server) as a diagslave substitute and added
+three live tests in `client.rs`'s `smoke` module —
+`rtu_reads_float32_cdab_and_switches_unit_id_over_a_virtual_serial_pair`,
+`rtu_port_vanishing_mid_poll_fails_cleanly_not_a_hang`, and
+`opening_an_already_open_port_twice_is_reported_as_busy` — mirroring the existing TCP smoke
+pattern (skip quietly if the rig isn't up).
+
+Running them surfaced a genuine environment limitation, not a ModbusOpen bug: on **macOS**, the
+`serialport` crate cannot set a baud rate on a socat-created pseudo-terminal — `IOSSIOSPEED`
+returns `ENOTTY`, confirmed straight from the crate's own source comment
+(`serialport-4.9.0/src/posix/termios.rs`: *"attempting to set the baud rate on a pseudo terminal
+via this ioctl call will fail with the `ENOTTY` error"*). This is macOS-pty-specific — absent on
+Linux, and absent with any real serial device anywhere — so these three tests will run for real on
+Linux or CI, but always skip quietly on this Mac. **Still needed before field release:** run these
+on a Linux box (or install `diagslave`/`mbpoll` there) and do one real RS-485 USB-adapter check.
+Serial error humanization (busy / vanished / permission-denied → dialout hint) is unit-tested
+independently of any live rig and passes regardless.
+
+The mid-poll-disconnect failure mode itself *is* proven live, transport-agnostically, via the TCP
+equivalent (`mid_poll_disconnect_fails_cleanly_not_a_hang` — same `map_modbus_result` /
+`humanize_serial_error` code path RTU uses): a severed connection fails cleanly within
+`timeout_ms`, never hangs.
+
 ---
 
 ### M3 — Writes, formats, and the frame log  ·  *target: ~1.5 days*
@@ -185,11 +209,19 @@ on this machine but `diagslave`/`mbpoll` are not, so the RTU virtual-serial-pair
 **Acceptance**
 - [x] Writing a holding register changes the value on the next read — verified live: FC06 write
       of 999 to address 150, next read showed 999
-- [ ] Frame log hex matches what Wireshark shows for the same transaction — TX/RX entries confirmed
-      appearing live in the UI, but not independently byte-verified against a packet capture this
-      session (`mbpoll`/Wireshark cross-check tooling wasn't set up). The frame log reconstructs
-      MBAP+PDU bytes in `frame.rs` rather than capturing the literal wire bytes tokio-modbus sends —
-      worth a real capture check before final release sign-off.
+- [x] Frame log hex matches what Wireshark shows for the same transaction — byte-verified 2026-08-07
+      by inserting a transparent TCP proxy in front of `testrig/slave.py` that logs every raw byte
+      crossing it, then diffing that against the frame log's own `bytes` field for the same
+      transaction. Found and fixed a real bug in the process: the frame log's transaction id was
+      fabricated from the poll cycle's local `sequence` counter instead of tokio-modbus's actual
+      per-request counter (confirmed from `tokio-modbus-0.17.0/src/service/tcp.rs`: starts at 0,
+      increments once per request regardless of success/failure) — the two only coincidentally lined
+      up while every read succeeded, and diverged on the first exception. Fixed by having
+      `ModbusClient` track its own `next_tid`/`last_tid` mirroring tokio-modbus's algorithm exactly
+      (`client.rs`), so `poll.rs` now reports the real on-wire id. Re-verified live: bytes now match
+      byte-for-byte including the transaction id, for both a normal read and an exception response.
+      Locked in as a permanent regression test,
+      `poll::engine_tests::frame_log_bytes_match_the_real_wire_transaction_id`.
 - [x] An exception response (e.g. FC03+0x80, code 02) is shown as
       "Illegal Data Address (02)", not a raw number — verified live
 - [x] All 28 display formats produce correct values against known test vectors — `codec.rs`
@@ -234,9 +266,30 @@ updated immediately from that external write via `sim-update`, with no page refr
 `cargo test` is 43/43 (9 more than the last note: `validate_simulator_config` tests plus a
 `sim-update`-emission test), clippy/fmt clean, `pnpm build` clean.
 
-**Not done yet:** Task 4 (tag animation), Task 6 (device profile JSON), Task 7 (RTU server mode).
-No RTU setup screen for the simulator side either — TCP only for now, called out explicitly in
-the Setup screen's copy so it isn't mistaken for a gap nobody noticed.
+**Progress note 3 (2026-08-07):** Task 4 (tag animation) is done. `modbus/animate.rs` adds
+`AnimationEngine`/`TagRuntime` implementing all five behaviors from the plan —
+`static | random(min,max) | ramp(min,max,step) | sine(min,max,period_s) | counter(step)` — ticking
+on a configurable interval (`SimulatorConfig.tickMs`) and writing through the same `codec::encode`
+path the scanner's writes use, so a `float32 CDAB` tag correctly spans two registers. `ramp` bounces
+between min/max (triangle wave, not sawtooth — a documented choice, not a spec requirement).
+`SimulatorServer::start_animation` runs it as a second task sharing the server's cancellation
+token, so `sim_stop` tears down both the accept loop and the ticker together.
+`SimulatorSetup.tsx` gained a per-slave tag editor (name, address, `FormatPicker` reused from the
+scanner side, behavior picker with the right fields per kind). Validated
+(`validate_simulator_config`): tag address+span must fit the slave's holding-register block,
+`min < max`, `period_s > 0`, tick interval > 0 when any tag exists, string tags rejected (not
+encodable). `cargo test` is 56/56 (13 more: 7 in `animate.rs`, 5 new `validate.rs` cases, 1
+`server.rs` integration test spinning up a real counter tag and reading it back through a live
+client), clippy/fmt/`pnpm build` clean.
+
+Verified live again: started the simulator from the UI with a `counter(step=1)` tag, watched an
+independent `pymodbus` client read 63, 64, 65, 66, 67 once a second, and confirmed the UI's own
+table counted up in step with no interaction — the `sim-update` push path handles ticks exactly
+like it handles external writes.
+
+**Not done yet:** Task 6 (device profile JSON), Task 7 (RTU server mode). No RTU setup screen for
+the simulator side either — TCP only for now, called out explicitly in the Setup screen's copy so
+it isn't mistaken for a gap nobody noticed.
 
 **Tasks**
 1. ~~Rust: `tokio-modbus` TCP server with a `ModbusStore` (coils, discretes, input regs, holding regs)
@@ -246,8 +299,9 @@ the Setup screen's copy so it isn't mistaken for a gap nobody noticed.
 3. ~~Per slave, add register blocks: type, start address, count, initial value.~~ Done — block
    *sizes* are configurable; blocks always start zero-filled (no non-zero "initial value" field
    yet, since that's really what Task 4's `static` tag behaviour is for).
-4. **Tag animation** — per tag: `static | random(min,max) | ramp(min,max,step) | sine(min,max,period) | counter(step)`
-   with data type + word order, so a `float32 CDAB` tag writes two registers correctly.
+4. ~~**Tag animation** — per tag: `static | random(min,max) | ramp(min,max,step) | sine(min,max,period) | counter(step)`
+   with data type + word order, so a `float32 CDAB` tag writes two registers correctly.~~ Done —
+   `modbus/animate.rs`, verified live.
 5. ~~Live editable value table — writes from a connected master show up here in real time.~~ Done
    and verified live (see progress note above).
 6. **Device profiles** as JSON. Ship three built from the existing simulator scripts:

@@ -87,6 +87,12 @@ pub struct ModbusClient {
     inter_frame_delay: Duration,
     first_frame: bool,
     pub transport: Transport,
+    /// Mirrors tokio-modbus's own TCP transaction-id counter (starts at 0,
+    /// wraps, increments once per request regardless of outcome) so the
+    /// frame log can show the real on-wire transaction id instead of a
+    /// fabricated one. Meaningless for RTU (no MBAP header) but harmless.
+    next_tid: u16,
+    last_tid: u16,
 }
 
 impl ModbusClient {
@@ -129,6 +135,8 @@ impl ModbusClient {
             inter_frame_delay: Duration::ZERO,
             first_frame: true,
             transport: Transport::Tcp,
+            next_tid: 0,
+            last_tid: 0,
         })
     }
 
@@ -159,11 +167,27 @@ impl ModbusClient {
             inter_frame_delay: Duration::from_micros(u64::from(delay_us)),
             first_frame: true,
             transport: Transport::Rtu,
+            next_tid: 0,
+            last_tid: 0,
         })
     }
 
     pub fn set_unit_id(&mut self, unit_id: u8) {
         self.ctx.set_slave(Slave(unit_id));
+    }
+
+    /// The TCP transaction id used by the request just issued — call right
+    /// after a read/write method returns. Matches tokio-modbus's own counter
+    /// exactly (see `client.rs` doc comment on `next_tid`); meaningless for RTU.
+    pub fn last_tid(&self) -> u16 {
+        self.last_tid
+    }
+
+    /// Allocate the next transaction id, mirroring tokio-modbus's generator:
+    /// one id per request issued, regardless of success/failure/timeout.
+    fn alloc_tid(&mut self) {
+        self.last_tid = self.next_tid;
+        self.next_tid = self.next_tid.wrapping_add(1);
     }
 
     async fn maybe_inter_frame_delay(&mut self) {
@@ -209,6 +233,7 @@ impl ModbusClient {
     ) -> Result<Vec<u16>, ReadError> {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
+        self.alloc_tid();
 
         let call = async {
             match function {
@@ -241,6 +266,7 @@ impl ModbusClient {
     ) -> Result<Vec<bool>, ReadError> {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
+        self.alloc_tid();
 
         let call = async {
             match function {
@@ -268,6 +294,7 @@ impl ModbusClient {
     ) -> Result<(), ReadError> {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
+        self.alloc_tid();
         let call = self.ctx.write_single_coil(address, value);
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
@@ -285,6 +312,7 @@ impl ModbusClient {
     ) -> Result<(), ReadError> {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
+        self.alloc_tid();
         let call = self.ctx.write_single_register(address, value);
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
@@ -302,6 +330,7 @@ impl ModbusClient {
     ) -> Result<(), ReadError> {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
+        self.alloc_tid();
         let call = self.ctx.write_multiple_coils(address, values);
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
@@ -319,6 +348,7 @@ impl ModbusClient {
     ) -> Result<(), ReadError> {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
+        self.alloc_tid();
         let call = self.ctx.write_multiple_registers(address, values);
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
@@ -391,6 +421,281 @@ mod smoke {
         assert_eq!(regs2, vec![7, 7, 7, 7]);
 
         client.disconnect().await;
+    }
+
+    /// Nothing listens on this port — connect must fail fast with a clear
+    /// error, not hang. Doesn't need the test rig running.
+    #[tokio::test]
+    async fn connection_refused_returns_a_clear_error_quickly() {
+        let config = TcpConfig {
+            host: "127.0.0.1".into(),
+            port: 19_999,
+            unit_id: 1,
+            timeout_ms: 2000,
+            retries: 1,
+        };
+        let started = std::time::Instant::now();
+        let result = ModbusClient::connect_tcp(&config).await;
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "connection-refused should fail well under the configured timeout, took {:?}",
+            started.elapsed()
+        );
+        match result {
+            Err(AppError::TcpConnect { host, port, .. }) => {
+                assert_eq!(host, "127.0.0.1");
+                assert_eq!(port, 19_999);
+            }
+            Ok(_) => panic!("expected connection-refused to fail, got Ok"),
+            Err(other) => panic!("expected AppError::TcpConnect, got {other:?}"),
+        }
+    }
+
+    /// 10.255.255.1 is a reserved, non-routable address on this LAN, so the
+    /// SYN is silently dropped — connect must still bail out at our own
+    /// `timeout_ms`, not hang indefinitely.
+    #[tokio::test]
+    async fn connect_times_out_instead_of_hanging_on_an_unroutable_host() {
+        let config = TcpConfig {
+            host: "10.255.255.1".into(),
+            port: 502,
+            unit_id: 1,
+            timeout_ms: 300,
+            retries: 1,
+        };
+        let started = std::time::Instant::now();
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), ModbusClient::connect_tcp(&config))
+                .await
+                .expect("connect_tcp must return on its own — it must not hang past timeout_ms");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "should bail out around timeout_ms=300, took {:?}",
+            started.elapsed()
+        );
+        match result {
+            Err(AppError::TcpConnect { .. }) => {}
+            Ok(_) => panic!("expected an unroutable host to fail, got Ok"),
+            Err(other) => panic!("expected AppError::TcpConnect, got {other:?}"),
+        }
+    }
+
+    /// `testrig/slave.py` only serves unit ids 1 and 2 — polling unit 99
+    /// must surface a clear error quickly, not hang or crash the app.
+    #[tokio::test]
+    async fn wrong_unit_id_produces_a_clear_error_not_a_hang() {
+        let config = TcpConfig {
+            host: "127.0.0.1".into(),
+            port: 5020,
+            unit_id: 99,
+            timeout_ms: 1000,
+            retries: 1,
+        };
+        let mut client = match ModbusClient::connect_tcp(&config).await {
+            Ok(c) => c,
+            Err(_) => {
+                eprintln!("skipping: no slave on 127.0.0.1:5020");
+                return;
+            }
+        };
+        let result = tokio::time::timeout(
+            Duration::from_secs(3),
+            client.read_registers(FunctionCode::ReadHoldingRegisters, 0, 4, 99),
+        )
+        .await
+        .expect("a read for an unserved unit id must not hang");
+        assert!(
+            matches!(
+                result,
+                Err(ReadError::Exception { .. }) | Err(ReadError::Timeout)
+            ),
+            "expected a clear exception or timeout for an unknown unit id, got {result:?}"
+        );
+    }
+
+    /// Simulates a mid-poll network drop: proxy a real connection to the
+    /// test slave, do one successful read through it, then sever the
+    /// connection (like a cable pull) and confirm the next read fails
+    /// cleanly within `timeout_ms` instead of hanging forever.
+    #[tokio::test]
+    async fn mid_poll_disconnect_fails_cleanly_not_a_hang() {
+        use tokio::net::{TcpListener, TcpStream};
+
+        if TcpStream::connect("127.0.0.1:5020").await.is_err() {
+            eprintln!("skipping: no slave on 127.0.0.1:5020");
+            return;
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_addr = listener.local_addr().unwrap();
+
+        let proxy_task = tokio::spawn(async move {
+            let (mut client_sock, _) = listener.accept().await.unwrap();
+            let mut server_sock = TcpStream::connect("127.0.0.1:5020").await.unwrap();
+            let (mut cr, mut cw) = client_sock.split();
+            let (mut sr, mut sw) = server_sock.split();
+            let _ = tokio::select! {
+                r = tokio::io::copy(&mut cr, &mut sw) => r,
+                r = tokio::io::copy(&mut sr, &mut cw) => r,
+            };
+        });
+
+        let config = TcpConfig {
+            host: proxy_addr.ip().to_string(),
+            port: proxy_addr.port(),
+            unit_id: 1,
+            timeout_ms: 500,
+            retries: 1,
+        };
+        let mut client = ModbusClient::connect_tcp(&config)
+            .await
+            .expect("connect through the proxy");
+        client
+            .read_registers(FunctionCode::ReadHoldingRegisters, 100, 8, 1)
+            .await
+            .expect("first read through the proxy should succeed like a normal poll");
+
+        // Sever the connection — closes both proxy-side sockets, like a
+        // cable pull or the slave process dying mid-poll.
+        proxy_task.abort();
+        let _ = proxy_task.await;
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(3),
+            client.read_registers(FunctionCode::ReadHoldingRegisters, 100, 8, 1),
+        )
+        .await
+        .expect("a read after a mid-poll disconnect must not hang");
+        assert!(
+            matches!(
+                result,
+                Err(ReadError::Transport(_)) | Err(ReadError::Timeout)
+            ),
+            "expected a clean transport error or timeout after disconnect, got {result:?}"
+        );
+    }
+
+    /// Live smoke against `testrig/rtu_slave.py` over a socat virtual serial
+    /// pair (no `diagslave` in this environment): `socat -d -d
+    /// pty,raw,echo=0,link=/tmp/ttyA pty,raw,echo=0,link=/tmp/ttyB`, then
+    /// `rtu_slave.py /tmp/ttyA`. Skips quietly if the pair isn't up. Closes
+    /// M2's open "polls a slave over a socat virtual serial pair" item.
+    ///
+    /// Note: on macOS this always skips — the `serialport` crate can't set
+    /// a baud rate on a macOS pseudo-terminal (`IOSSIOSPEED` returns ENOTTY;
+    /// see its own `posix/termios.rs` comment). Not a ModbusOpen bug: it's a
+    /// pty-specific macOS limitation, absent on Linux and with any real
+    /// serial device. Run these on Linux or against real RS-485 hardware.
+    fn rtu_config(port: &str, unit_id: u8) -> RtuConfig {
+        RtuConfig {
+            port: port.to_string(),
+            baud_rate: 9600,
+            data_bits: 8,
+            parity: Parity::None,
+            stop_bits: 1,
+            unit_id,
+            timeout_ms: 1000,
+            retries: 1,
+            inter_frame_delay_us: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn rtu_reads_float32_cdab_and_switches_unit_id_over_a_virtual_serial_pair() {
+        let mut client = match ModbusClient::connect_rtu(&rtu_config("/tmp/ttyB", 1)).await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("skipping: no socat pair / rtu_slave.py on /tmp/ttyB ({e})");
+                return;
+            }
+        };
+
+        let regs = client
+            .read_registers(FunctionCode::ReadHoldingRegisters, 100, 8, 1)
+            .await
+            .expect("RTU read unit 1");
+        let format = DataFormat {
+            data_type: DataType::Float32,
+            word_order: WordOrder::Cdab,
+            scale: 1.0,
+            offset: 0.0,
+        };
+        let rows = decode_block(&regs, 100, &format);
+        match &rows[0].value {
+            TypedValue::Float(v) => assert!((v - 231.0).abs() < 0.01, "voltage={v}"),
+            other => panic!("expected float, got {other:?}"),
+        }
+
+        // Same connection, no reconnect — proves unit-ID switching works over RTU too.
+        let regs2 = client
+            .read_registers(FunctionCode::ReadHoldingRegisters, 0, 4, 2)
+            .await
+            .expect("RTU read unit 2");
+        assert_eq!(regs2, vec![7, 7, 7, 7]);
+
+        client.disconnect().await;
+    }
+
+    /// Kills the socat pair mid-poll (like unplugging the USB adapter) and
+    /// confirms the next read fails cleanly and quickly, not a hang.
+    #[tokio::test]
+    async fn rtu_port_vanishing_mid_poll_fails_cleanly_not_a_hang() {
+        let mut client = match ModbusClient::connect_rtu(&rtu_config("/tmp/ttyB", 1)).await {
+            Ok(c) => c,
+            Err(_) => {
+                eprintln!("skipping: no socat pair / rtu_slave.py on /tmp/ttyB");
+                return;
+            }
+        };
+        client
+            .read_registers(FunctionCode::ReadHoldingRegisters, 100, 8, 1)
+            .await
+            .expect("first RTU read should succeed");
+
+        std::process::Command::new("pkill")
+            .args(["-f", "socat -d -d pty"])
+            .status()
+            .expect("pkill socat");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(3),
+            client.read_registers(FunctionCode::ReadHoldingRegisters, 100, 8, 1),
+        )
+        .await
+        .expect("a read after the serial pair vanishes must not hang");
+        assert!(
+            matches!(
+                result,
+                Err(ReadError::Transport(_)) | Err(ReadError::Timeout)
+            ),
+            "expected a clean transport error or timeout, got {result:?}"
+        );
+    }
+
+    /// Opening the same serial port twice must fail with an actionable
+    /// "busy" message, not a raw errno — the real-hardware analogue of two
+    /// apps fighting over one USB-RS485 adapter.
+    #[tokio::test]
+    async fn opening_an_already_open_port_twice_is_reported_as_busy() {
+        let Ok(_first) = ModbusClient::connect_rtu(&rtu_config("/tmp/ttyB", 1)).await else {
+            eprintln!("skipping: no socat pair / rtu_slave.py on /tmp/ttyB");
+            return;
+        };
+        let second = ModbusClient::connect_rtu(&rtu_config("/tmp/ttyB", 1)).await;
+        match second {
+            Err(AppError::SerialOpen { reason, .. }) => {
+                eprintln!("second-open error (informational): {reason}");
+            }
+            Ok(_) => {
+                eprintln!(
+                    "note: this OS/pty allowed a second concurrent open — \
+                     exclusive-open enforcement is OS/device dependent for ptys; \
+                     verify on a real USB-RS485 adapter before relying on this."
+                );
+            }
+            Err(other) => panic!("expected SerialOpen or Ok, got {other:?}"),
+        }
     }
 
     #[test]

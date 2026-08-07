@@ -321,6 +321,53 @@ pub struct ConnectionLostEvent {
     pub message: String,
 }
 
+/// How a tag's value evolves on each animation tick. `Ramp` bounces between
+/// `min` and `max` (triangle wave, not sawtooth) so it never has a
+/// discontinuous jump; `Sine`'s phase is driven by wall-clock time since the
+/// simulator started, not tick count, so it stays correct across
+/// interval/tick-rate changes.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TagBehavior {
+    Static,
+    #[serde(rename_all = "camelCase")]
+    Random {
+        min: f64,
+        max: f64,
+    },
+    #[serde(rename_all = "camelCase")]
+    Ramp {
+        min: f64,
+        max: f64,
+        step: f64,
+    },
+    #[serde(rename_all = "camelCase")]
+    Sine {
+        min: f64,
+        max: f64,
+        period_s: f64,
+    },
+    #[serde(rename_all = "camelCase")]
+    Counter {
+        step: f64,
+    },
+}
+
+/// An animated value within a slave's holding-register block. Coils/
+/// discretes/input registers aren't animatable in v1 — every documented
+/// device profile (docs/reference/device-profiles.md) is holding-register
+/// based, and `String` isn't a valid tag type (`codec::encode` doesn't
+/// support encoding a random/ramping string).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagConfig {
+    pub name: String,
+    pub address: WireAddress,
+    pub format: DataFormat,
+    pub behavior: TagBehavior,
+    pub initial_value: f64,
+}
+
 /// One slave's register/coil block sizes, as configured from the UI —
 /// `sim_start` zero-fills each block to these counts. See
 /// `modbus::store::SlaveLayout` for the internal (non-wire) equivalent.
@@ -332,6 +379,7 @@ pub struct SlaveSimConfig {
     pub discrete_count: u16,
     pub input_register_count: u16,
     pub holding_register_count: u16,
+    pub tags: Vec<TagConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -339,6 +387,8 @@ pub struct SlaveSimConfig {
 pub struct SimulatorConfig {
     pub tcp_port: u16,
     pub slaves: Vec<SlaveSimConfig>,
+    /// How often animated tags tick. Ignored if no slave has any tags.
+    pub tick_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

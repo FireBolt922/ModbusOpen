@@ -6,7 +6,7 @@ use tauri::{AppHandle, State};
 use crate::error::{exception_name_and_hint, AppError};
 use crate::modbus::server::SimulatorServer;
 use crate::modbus::store::{ModbusStore, SlaveLayout};
-use crate::modbus::types::{SimulatorConfig, SimulatorInfo, SimulatorSnapshot};
+use crate::modbus::types::{SimulatorConfig, SimulatorInfo, SimulatorSnapshot, TagConfig};
 use crate::modbus::validate::validate_simulator_config;
 use crate::AppState;
 
@@ -25,6 +25,14 @@ fn layouts_from_config(config: &SimulatorConfig) -> Vec<(u8, SlaveLayout)> {
                 },
             )
         })
+        .collect()
+}
+
+fn tags_from_config(config: &SimulatorConfig) -> Vec<(u8, TagConfig)> {
+    config
+        .slaves
+        .iter()
+        .flat_map(|s| s.tags.iter().map(move |t| (s.unit_id, t.clone())))
         .collect()
 }
 
@@ -60,11 +68,12 @@ pub async fn sim_start(
         .parse()
         .map_err(|_| AppError::InvalidConfig("invalid TCP port".to_string()))?;
 
-    let server = SimulatorServer::bind(addr, store, app, session_id)
+    let mut server = SimulatorServer::bind(addr, store, app.clone(), session_id)
         .await
         .map_err(|e| {
             AppError::InvalidConfig(format!("can't listen on port {} — {e}", config.tcp_port))
         })?;
+    server.start_animation(app, tags_from_config(&config), config.tick_ms);
 
     let info = SimulatorInfo {
         session_id: server.session_id(),

@@ -403,7 +403,7 @@ async fn read_cycle<R: Runtime>(
                     app,
                     session_id,
                     transport,
-                    *sequence as u16,
+                    client.last_tid(),
                     cfg.unit_id,
                     &tx_pdu,
                     &rx_pdu,
@@ -426,7 +426,7 @@ async fn read_cycle<R: Runtime>(
                         app,
                         session_id,
                         transport,
-                        (*sequence + 1) as u16,
+                        client.last_tid(),
                         cfg.unit_id,
                         &tx_pdu,
                         &pdu_exception(fc, *code),
@@ -452,7 +452,7 @@ async fn read_cycle<R: Runtime>(
                     app,
                     session_id,
                     transport,
-                    *sequence as u16,
+                    client.last_tid(),
                     cfg.unit_id,
                     &tx_pdu,
                     &rx_pdu,
@@ -476,7 +476,7 @@ async fn read_cycle<R: Runtime>(
                         app,
                         session_id,
                         transport,
-                        (*sequence + 1) as u16,
+                        client.last_tid(),
                         cfg.unit_id,
                         &tx_pdu,
                         &pdu_exception(fc, *code),
@@ -589,7 +589,7 @@ async fn write_single_coil_inner<R: Runtime>(
                 app,
                 session_id,
                 transport,
-                *sequence as u16,
+                client.last_tid(),
                 unit_id,
                 &tx_pdu,
                 &rx_pdu,
@@ -606,8 +606,7 @@ async fn write_single_coil_inner<R: Runtime>(
             })
         }
         Err(e) => write_err(
-            app, e, 0x05, unit_id, address, &tx_pdu, session_id, transport, sequence, stats,
-            started,
+            app, client, e, 0x05, unit_id, address, &tx_pdu, session_id, transport, stats, started,
         ),
     }
 }
@@ -636,7 +635,7 @@ async fn write_single_register_inner<R: Runtime>(
                 app,
                 session_id,
                 transport,
-                *sequence as u16,
+                client.last_tid(),
                 unit_id,
                 &tx_pdu,
                 &rx_pdu,
@@ -653,8 +652,7 @@ async fn write_single_register_inner<R: Runtime>(
             })
         }
         Err(e) => write_err(
-            app, e, 0x06, unit_id, address, &tx_pdu, session_id, transport, sequence, stats,
-            started,
+            app, client, e, 0x06, unit_id, address, &tx_pdu, session_id, transport, stats, started,
         ),
     }
 }
@@ -684,7 +682,7 @@ async fn write_multiple_coils_inner<R: Runtime>(
                 app,
                 session_id,
                 transport,
-                *sequence as u16,
+                client.last_tid(),
                 unit_id,
                 &tx_pdu,
                 &rx_pdu,
@@ -701,8 +699,7 @@ async fn write_multiple_coils_inner<R: Runtime>(
             })
         }
         Err(e) => write_err(
-            app, e, 0x0F, unit_id, address, &tx_pdu, session_id, transport, sequence, stats,
-            started,
+            app, client, e, 0x0F, unit_id, address, &tx_pdu, session_id, transport, stats, started,
         ),
     }
 }
@@ -735,7 +732,7 @@ async fn write_multiple_registers_inner<R: Runtime>(
                 app,
                 session_id,
                 transport,
-                *sequence as u16,
+                client.last_tid(),
                 unit_id,
                 &tx_pdu,
                 &rx_pdu,
@@ -752,8 +749,7 @@ async fn write_multiple_registers_inner<R: Runtime>(
             })
         }
         Err(e) => write_err(
-            app, e, 0x10, unit_id, address, &tx_pdu, session_id, transport, sequence, stats,
-            started,
+            app, client, e, 0x10, unit_id, address, &tx_pdu, session_id, transport, stats, started,
         ),
     }
 }
@@ -761,6 +757,7 @@ async fn write_multiple_registers_inner<R: Runtime>(
 #[allow(clippy::too_many_arguments)]
 fn write_err<R: Runtime>(
     app: &AppHandle<R>,
+    client: &ModbusClient,
     e: ReadError,
     fc: u8,
     unit_id: u8,
@@ -768,7 +765,6 @@ fn write_err<R: Runtime>(
     tx_pdu: &[u8],
     session_id: u64,
     transport: Transport,
-    sequence: &mut u64,
     stats: &mut StatsAccumulator,
     started: Instant,
 ) -> Result<WriteResult, ReadOutcome> {
@@ -778,7 +774,7 @@ fn write_err<R: Runtime>(
             app,
             session_id,
             transport,
-            (*sequence + 1) as u16,
+            client.last_tid(),
             unit_id,
             tx_pdu,
             &pdu_exception(fc, *code),
@@ -1070,5 +1066,76 @@ mod engine_tests {
             TypedValue::Uint(v) => assert_eq!(*v, 4242),
             other => panic!("expected uint16, got {other:?}"),
         }
+    }
+
+    /// Byte-for-byte regression check: the frame log's transaction id must
+    /// match tokio-modbus's own counter (verified live against a
+    /// byte-logging TCP proxy in front of `testrig/slave.py` — see PLAN.md
+    /// M3), not a fabricated one derived from the poll cycle count.
+    #[tokio::test]
+    async fn frame_log_bytes_match_the_real_wire_transaction_id() {
+        let Some(client) = connect_unit(1).await else {
+            eprintln!("skipping: no slave on 127.0.0.1:5020");
+            return;
+        };
+        let app = test_app();
+        let frames = collect_events(&app, "frame");
+
+        let session = ScannerSession::spawn(
+            app.handle().clone(),
+            1,
+            Transport::Tcp,
+            "test".into(),
+            client,
+        );
+        let cfg = PollConfig {
+            unit_id: 1,
+            function: FunctionCode::ReadHoldingRegisters,
+            start_address: 100,
+            quantity: 8,
+            interval_ms: 100,
+            format: float32_cdab_format(),
+        };
+        session.send(PollCommand::SetConfig(cfg)).await.unwrap();
+        session.send(PollCommand::Start).await.unwrap();
+        assert!(wait_for(&frames, 2).await, "expected tx+rx frames");
+
+        // A second, out-of-range read on the same connection: tokio-modbus's
+        // transaction id keeps incrementing regardless of the exception.
+        let bad_cfg = PollConfig {
+            unit_id: 1,
+            function: FunctionCode::ReadHoldingRegisters,
+            start_address: 60_000,
+            quantity: 5,
+            interval_ms: 100,
+            format: DataFormat::default(),
+        };
+        session.send(PollCommand::SetConfig(bad_cfg)).await.unwrap();
+        assert!(
+            wait_for(&frames, 4).await,
+            "expected tx+rx exception frames"
+        );
+        session.shutdown().await;
+
+        fn hex_bytes(payload: &str) -> String {
+            let v: Value = serde_json::from_str(payload).unwrap();
+            v["bytes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|b| format!("{:02x}", b.as_u64().unwrap()))
+                .collect()
+        }
+
+        let captured = frames.lock().unwrap();
+        // MBAP: transaction id, protocol id 0000, length, unit, PDU —
+        // captured live from an unmodified wire trace (see PLAN.md M3).
+        assert_eq!(hex_bytes(&captured[0]), "000000000006010300640008"); // tx tid 0, read 100x8
+        assert_eq!(
+            hex_bytes(&captured[1]),
+            "000000000013010310000043670000417000004248999a3f79" // rx tid 0
+        );
+        assert_eq!(hex_bytes(&captured[2]), "0001000000060103ea600005"); // tx tid 1, read 60000x5
+        assert_eq!(hex_bytes(&captured[3]), "000100000003018302"); // rx tid 1, exception 02
     }
 }
