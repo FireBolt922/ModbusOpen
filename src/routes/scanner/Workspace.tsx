@@ -38,7 +38,7 @@ const READ_FUNCTIONS: { value: FunctionCode; label: string }[] = [
 ];
 
 const selectClass =
-  "h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+  "h-8 rounded-lg border border-input bg-background text-foreground px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 function isBitFc(fc: FunctionCode): boolean {
   return fc === "read_coils" || fc === "read_discrete_inputs";
