@@ -4,7 +4,9 @@ import type {
   DecodedRegister,
   PollConfig,
   PollStats,
+  RtuConfig,
   TcpConfig,
+  Transport,
 } from "@/lib/types";
 
 export const DEFAULT_TCP_CONFIG: TcpConfig = {
@@ -13,6 +15,18 @@ export const DEFAULT_TCP_CONFIG: TcpConfig = {
   unitId: 1,
   timeoutMs: 1000,
   retries: 1,
+};
+
+export const DEFAULT_RTU_CONFIG: RtuConfig = {
+  port: "",
+  baudRate: 9600,
+  dataBits: 8,
+  parity: "none",
+  stopBits: 1,
+  unitId: 1,
+  timeoutMs: 1000,
+  retries: 1,
+  interFrameDelayUs: null,
 };
 
 export const DEFAULT_POLL_CONFIG: PollConfig = {
@@ -42,7 +56,9 @@ const EMPTY_STATS: PollStats = {
 };
 
 type ScannerState = {
+  preferredTransport: Transport | null;
   tcpConfig: TcpConfig;
+  rtuConfig: RtuConfig;
   pollConfig: PollConfig;
   connection: ConnectionInfo | null;
   connecting: boolean;
@@ -53,10 +69,12 @@ type ScannerState = {
   lastError: string | null;
   lastSequence: number;
 
+  setPreferredTransport: (t: Transport | null) => void;
   setTcpConfig: (patch: Partial<TcpConfig>) => void;
+  setRtuConfig: (patch: Partial<RtuConfig>) => void;
   setPollConfigLocal: (patch: Partial<PollConfig>) => void;
   setConnecting: (v: boolean) => void;
-  setConnection: (info: ConnectionInfo | null) => void;
+  setConnection: (info: ConnectionInfo | null, unitId?: number) => void;
   setPolling: (v: boolean) => void;
   applyPollResult: (
     sessionId: number,
@@ -74,7 +92,9 @@ type ScannerState = {
 };
 
 export const useScannerStore = create<ScannerState>((set, get) => ({
+  preferredTransport: null,
   tcpConfig: { ...DEFAULT_TCP_CONFIG },
+  rtuConfig: { ...DEFAULT_RTU_CONFIG },
   pollConfig: { ...DEFAULT_POLL_CONFIG },
   connection: null,
   connecting: false,
@@ -85,8 +105,13 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
   lastError: null,
   lastSequence: 0,
 
+  setPreferredTransport: (preferredTransport) => set({ preferredTransport }),
+
   setTcpConfig: (patch) =>
     set((s) => ({ tcpConfig: { ...s.tcpConfig, ...patch } })),
+
+  setRtuConfig: (patch) =>
+    set((s) => ({ rtuConfig: { ...s.rtuConfig, ...patch } })),
 
   setPollConfigLocal: (patch) =>
     set((s) => {
@@ -94,11 +119,12 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       if (patch.format) {
         next.format = { ...s.pollConfig.format, ...patch.format };
       }
-      // Keep unit ID on the TCP form in sync when changed mid-poll.
+      // Keep unit ID on both connect forms in sync when changed mid-poll.
       if (patch.unitId !== undefined) {
         return {
           pollConfig: next,
           tcpConfig: { ...s.tcpConfig, unitId: patch.unitId },
+          rtuConfig: { ...s.rtuConfig, unitId: patch.unitId },
         };
       }
       return { pollConfig: next };
@@ -106,7 +132,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
 
   setConnecting: (connecting) => set({ connecting }),
 
-  setConnection: (connection) =>
+  setConnection: (connection, unitId) =>
     set({
       connection,
       connecting: false,
@@ -119,7 +145,11 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
             lastSequence: 0,
             pollConfig: {
               ...get().pollConfig,
-              unitId: get().tcpConfig.unitId,
+              unitId:
+                unitId ??
+                (connection.transport === "rtu"
+                  ? get().rtuConfig.unitId
+                  : get().tcpConfig.unitId),
             },
           }
         : {}),

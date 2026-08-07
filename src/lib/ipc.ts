@@ -11,6 +11,7 @@ import type {
   PollConfig,
   PollErrorEvent,
   PollResult,
+  RtuConfig,
   SerialPortInfo,
   TcpConfig,
 } from "./types";
@@ -60,6 +61,10 @@ export async function listSerialPorts(): Promise<SerialPortInfo[]> {
 
 export async function tcpConnect(config: TcpConfig): Promise<ConnectionInfo> {
   return invoke<ConnectionInfo>("tcp_connect", { config });
+}
+
+export async function rtuConnect(config: RtuConfig): Promise<ConnectionInfo> {
+  return invoke<ConnectionInfo>("rtu_connect", { config });
 }
 
 export async function disconnect(): Promise<void> {

@@ -33,6 +33,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::serial::list_serial_ports,
             commands::connection::tcp_connect,
+            commands::connection::rtu_connect,
             commands::connection::disconnect,
             commands::connection::connection_status,
             commands::poll::set_poll_config,

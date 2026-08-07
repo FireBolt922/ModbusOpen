@@ -53,6 +53,21 @@ export type TcpConfig = {
   retries: number;
 };
 
+export type Parity = "none" | "even" | "odd";
+
+export type RtuConfig = {
+  port: string;
+  baudRate: number;
+  dataBits: number;
+  parity: Parity;
+  stopBits: number;
+  unitId: number;
+  timeoutMs: number;
+  retries: number;
+  /** null = auto (3.5 character times per the RTU spec). */
+  interFrameDelayUs: number | null;
+};
+
 export type ConnectionInfo = {
   sessionId: number;
   transport: Transport;

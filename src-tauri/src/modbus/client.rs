@@ -6,14 +6,18 @@
 
 use std::time::Duration;
 
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
+use tokio_modbus::client::rtu;
 use tokio_modbus::client::tcp;
 use tokio_modbus::client::{Context, Reader};
 use tokio_modbus::slave::{Slave, SlaveContext};
 use tokio_modbus::ExceptionCode;
+use tokio_serial::{DataBits, FlowControl, Parity as SerialParity, SerialPortBuilderExt, StopBits};
 
-use super::types::{FunctionCode, TcpConfig, WireAddress};
-use crate::error::{exception_name_and_hint, AppError};
+use super::types::{FunctionCode, Parity, RtuConfig, TcpConfig, WireAddress};
+use crate::error::{
+    exception_name_and_hint, humanize_serial_error, map_serial_open_error, AppError,
+};
 
 /// Outcome of a single read. Distinguishes "device answered with an error"
 /// (not fatal — keep polling) from "the transport is dead" (fatal — the poll
@@ -33,9 +37,55 @@ fn exception_code_to_u8(code: ExceptionCode) -> u8 {
     u8::from(code)
 }
 
+/// 3.5 character times at 11 bits/char, clamped per the RTU spec above 19200.
+/// See `docs/reference/serial-timing.md`.
+pub fn auto_inter_frame_delay_us(baud_rate: u32) -> u32 {
+    if baud_rate == 0 {
+        return 1750;
+    }
+    if baud_rate > 19_200 {
+        return 1750;
+    }
+    let char_time_us = 11.0 * 1_000_000.0 / f64::from(baud_rate);
+    (3.5 * char_time_us).ceil() as u32
+}
+
+fn map_data_bits(n: u8) -> Result<DataBits, AppError> {
+    match n {
+        5 => Ok(DataBits::Five),
+        6 => Ok(DataBits::Six),
+        7 => Ok(DataBits::Seven),
+        8 => Ok(DataBits::Eight),
+        _ => Err(AppError::InvalidConfig(format!(
+            "data bits must be 5–8, got {n}"
+        ))),
+    }
+}
+
+fn map_parity(p: Parity) -> SerialParity {
+    match p {
+        Parity::None => SerialParity::None,
+        Parity::Even => SerialParity::Even,
+        Parity::Odd => SerialParity::Odd,
+    }
+}
+
+fn map_stop_bits(n: u8) -> Result<StopBits, AppError> {
+    match n {
+        1 => Ok(StopBits::One),
+        2 => Ok(StopBits::Two),
+        _ => Err(AppError::InvalidConfig(format!(
+            "stop bits must be 1 or 2, got {n}"
+        ))),
+    }
+}
+
 pub struct ModbusClient {
     ctx: Context,
     timeout: Duration,
+    /// Silence before the next frame (RTU). Zero for TCP.
+    inter_frame_delay: Duration,
+    first_frame: bool,
 }
 
 impl ModbusClient {
@@ -75,11 +125,53 @@ impl ModbusClient {
         Ok(Self {
             ctx,
             timeout: connect_timeout,
+            inter_frame_delay: Duration::ZERO,
+            first_frame: true,
+        })
+    }
+
+    pub async fn connect_rtu(config: &RtuConfig) -> Result<Self, AppError> {
+        let data_bits = map_data_bits(config.data_bits)?;
+        let stop_bits = map_stop_bits(config.stop_bits)?;
+        let delay_us = config
+            .inter_frame_delay_us
+            .unwrap_or_else(|| auto_inter_frame_delay_us(config.baud_rate));
+
+        // Must open on the Tokio runtime — SerialStream wraps AsyncFd.
+        let builder = tokio_serial::new(&config.port, config.baud_rate)
+            .data_bits(data_bits)
+            .parity(map_parity(config.parity))
+            .stop_bits(stop_bits)
+            .flow_control(FlowControl::None)
+            .timeout(Duration::from_millis(config.timeout_ms));
+
+        let stream = builder
+            .open_native_async()
+            .map_err(|e| map_serial_open_error(&config.port, e))?;
+
+        let ctx = rtu::attach_slave(stream, Slave(config.unit_id));
+
+        Ok(Self {
+            ctx,
+            timeout: Duration::from_millis(config.timeout_ms),
+            inter_frame_delay: Duration::from_micros(u64::from(delay_us)),
+            first_frame: true,
         })
     }
 
     pub fn set_unit_id(&mut self, unit_id: u8) {
         self.ctx.set_slave(Slave(unit_id));
+    }
+
+    async fn maybe_inter_frame_delay(&mut self) {
+        if self.inter_frame_delay.is_zero() {
+            return;
+        }
+        if self.first_frame {
+            self.first_frame = false;
+            return;
+        }
+        sleep(self.inter_frame_delay).await;
     }
 
     /// Reads `quantity` registers of the given function starting at `start`,
@@ -93,6 +185,7 @@ impl ModbusClient {
         unit_id: u8,
     ) -> Result<Vec<u16>, ReadError> {
         self.set_unit_id(unit_id);
+        self.maybe_inter_frame_delay().await;
 
         let call = async {
             match function {
@@ -110,8 +203,12 @@ impl ModbusClient {
 
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
-            Ok(Err(tokio_modbus::Error::Transport(e))) => Err(ReadError::Transport(e.to_string())),
-            Ok(Err(tokio_modbus::Error::Protocol(e))) => Err(ReadError::Transport(e.to_string())),
+            Ok(Err(tokio_modbus::Error::Transport(e))) => {
+                Err(ReadError::Transport(humanize_serial_error(&e.to_string())))
+            }
+            Ok(Err(tokio_modbus::Error::Protocol(e))) => {
+                Err(ReadError::Transport(humanize_serial_error(&e.to_string())))
+            }
             Ok(Ok(Err(exception))) => {
                 let code = exception_code_to_u8(exception);
                 let (name, hint) = exception_name_and_hint(code, function as u8, start, unit_id);
@@ -181,5 +278,16 @@ mod smoke {
         assert_eq!(regs2, vec![7, 7, 7, 7]);
 
         client.disconnect().await;
+    }
+
+    #[test]
+    fn inter_frame_delay_matches_serial_timing_doc() {
+        // 9600 → 3.5 × 11/9600 s ≈ 4.01 ms
+        assert_eq!(auto_inter_frame_delay_us(9600), 4011);
+        // 19200 → ≈ 2.01 ms
+        assert_eq!(auto_inter_frame_delay_us(19200), 2006);
+        // Above 19200 the spec fixes t3.5 at 1.75 ms
+        assert_eq!(auto_inter_frame_delay_us(38400), 1750);
+        assert_eq!(auto_inter_frame_delay_us(115_200), 1750);
     }
 }
