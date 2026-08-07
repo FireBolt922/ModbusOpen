@@ -12,7 +12,7 @@ Think ModScan/ModSim, but modern, free, and pleasant to use.
 
 **Platforms:** Windows, Ubuntu/Linux, macOS (Intel + Apple Silicon)
 **Stack:** Tauri v2 + React/TypeScript UI, Rust core (`tokio-modbus`)
-**Status:** 🟢 M0 (Skeleton) implemented — see [PLAN.md](PLAN.md) for the milestone breakdown
+**Status:** ✅ M0 (Skeleton) complete · 🚧 M1 (TCP Scanner) next — see [PLAN.md](PLAN.md) for the milestone breakdown
 
 ---
 
