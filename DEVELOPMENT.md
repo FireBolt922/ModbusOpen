@@ -56,6 +56,7 @@ That's it — `pnpm install` pulls the JS toolchain; Cargo resolves Rust deps on
 
 ```bash
 pnpm tauri dev
+
 ```
 
 First run compiles the whole Rust dependency tree (~30–60s). Subsequent runs are incremental and
