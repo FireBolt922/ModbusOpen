@@ -141,6 +141,20 @@ The manual smoke checklist was then run live against the running app (`pnpm taur
 2026-08-07: connect/poll/decode, mid-poll unit-ID switch, and a closed-port error all confirmed
 working in the actual UI, not just at the protocol layer. All boxes above are ticked.
 
+**Status note 2 (2026-08-07) — pre-field-test hardening pass:** ahead of handing ModbusOpen to
+field testers, ran the full failure-case matrix from the `modbus-test-rig` skill against the TCP
+transport and closed every gap that wasn't already covered, each as a permanent live test in
+`client.rs`'s `smoke` module (skip quietly if the rig isn't up, same convention as the rest):
+connection refused (`connection_refused_returns_a_clear_error_quickly`), connect timeout against an
+unroutable host (`connect_times_out_instead_of_hanging_on_an_unroutable_host`), an unserved unit id
+(`wrong_unit_id_produces_a_clear_error_not_a_hang`), and a live mid-poll disconnect via a severed
+proxy connection (`mid_poll_disconnect_fails_cleanly_not_a_hang`). Every case fails cleanly and
+fast — none hang. FC03 over 125 registers was already caught client-side by `validate_poll_config`
+before this pass. `cargo test` is 64/64, clippy/fmt/`pnpm build` clean. Also reviewed
+`commands/*.rs` for panics reachable from user input (none — `NotConnected` guarded at every entry
+point, all datastore indexing bounds-checked via `.get()`/`.get_mut()`, not raw indexing) and
+confirmed `connection-lost` is wired end to end into the UI (`Workspace.tsx`).
+
 ---
 
 ### M2 — RTU Scanner  ·  *target: ~1 day*
