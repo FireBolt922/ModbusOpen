@@ -11,15 +11,20 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { errorMessage, simStart } from "@/lib/ipc";
 import type { TagBehavior } from "@/lib/types";
 import {
   useSimulatorStore,
   DEFAULT_SLAVE_CONFIG,
 } from "@/store/simulatorStore";
-
-const selectClass =
-  "h-8 rounded-lg border border-input bg-background text-foreground px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 function defaultBehaviorFor(kind: TagBehavior["kind"]): TagBehavior {
   switch (kind) {
@@ -40,19 +45,26 @@ function NumberField({
   label,
   value,
   onChange,
+  min,
+  max,
+  allowDecimal,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  allowDecimal?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1">
       <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Input
-        type="number"
-        className="h-8"
+      <NumberInput
         value={value}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        onChange={onChange}
+        min={min}
+        max={max}
+        allowDecimal={allowDecimal}
       />
     </div>
   );
@@ -83,6 +95,8 @@ function TagRow({ unitId, index }: { unitId: number; index: number }) {
         <NumberField
           label="Address"
           value={tag.address}
+          min={0}
+          max={65535}
           onChange={(v) => patch({ address: v })}
         />
         <div className="col-span-2">
@@ -96,27 +110,32 @@ function TagRow({ unitId, index }: { unitId: number; index: number }) {
       <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-4">
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Behavior</Label>
-          <select
-            className={selectClass}
+          <Select
             value={b.kind}
-            onChange={(e) =>
+            onValueChange={(v) =>
               patch({
-                behavior: defaultBehaviorFor(e.target.value as TagBehavior["kind"]),
+                behavior: defaultBehaviorFor(v as TagBehavior["kind"]),
               })
             }
           >
-            <option value="static">Static</option>
-            <option value="random">Random</option>
-            <option value="ramp">Ramp</option>
-            <option value="sine">Sine</option>
-            <option value="counter">Counter</option>
-          </select>
+            <SelectTrigger aria-label="Tag behavior">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="static">Static</SelectItem>
+              <SelectItem value="random">Random</SelectItem>
+              <SelectItem value="ramp">Ramp</SelectItem>
+              <SelectItem value="sine">Sine</SelectItem>
+              <SelectItem value="counter">Counter</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {b.kind === "static" && (
           <NumberField
             label="Value"
             value={tag.initialValue}
+            allowDecimal
             onChange={(v) => patch({ initialValue: v })}
           />
         )}
@@ -126,11 +145,13 @@ function TagRow({ unitId, index }: { unitId: number; index: number }) {
             <NumberField
               label="Min"
               value={b.min}
+              allowDecimal
               onChange={(v) => patch({ behavior: { ...b, min: v } })}
             />
             <NumberField
               label="Max"
               value={b.max}
+              allowDecimal
               onChange={(v) => patch({ behavior: { ...b, max: v } })}
             />
           </>
@@ -139,6 +160,7 @@ function TagRow({ unitId, index }: { unitId: number; index: number }) {
           <NumberField
             label="Step"
             value={b.step}
+            allowDecimal
             onChange={(v) => patch({ behavior: { ...b, step: v } })}
           />
         )}
@@ -146,6 +168,8 @@ function TagRow({ unitId, index }: { unitId: number; index: number }) {
           <NumberField
             label="Period (s)"
             value={b.periodS}
+            min={0}
+            allowDecimal
             onChange={(v) => patch({ behavior: { ...b, periodS: v } })}
           />
         )}
@@ -153,6 +177,7 @@ function TagRow({ unitId, index }: { unitId: number; index: number }) {
           <NumberField
             label="Step"
             value={b.step}
+            allowDecimal
             onChange={(v) => patch({ behavior: { ...b, step: v } })}
           />
         )}
@@ -193,59 +218,48 @@ function SlaveRow({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div className="flex flex-col gap-1.5">
           <Label>Unit ID</Label>
-          <Input
-            type="number"
+          <NumberInput
             min={1}
             max={247}
             value={slave.unitId}
-            onChange={(e) => onChange({ unitId: Number(e.target.value) || 1 })}
+            onChange={(unitId) => onChange({ unitId })}
           />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Coils</Label>
-          <Input
-            type="number"
+          <NumberInput
             min={0}
             max={2000}
             value={slave.coilCount}
-            onChange={(e) =>
-              onChange({ coilCount: Number(e.target.value) || 0 })
-            }
+            onChange={(coilCount) => onChange({ coilCount })}
           />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Discretes</Label>
-          <Input
-            type="number"
+          <NumberInput
             min={0}
             max={2000}
             value={slave.discreteCount}
-            onChange={(e) =>
-              onChange({ discreteCount: Number(e.target.value) || 0 })
-            }
+            onChange={(discreteCount) => onChange({ discreteCount })}
           />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Input regs</Label>
-          <Input
-            type="number"
+          <NumberInput
             min={0}
             max={125}
             value={slave.inputRegisterCount}
-            onChange={(e) =>
-              onChange({ inputRegisterCount: Number(e.target.value) || 0 })
-            }
+            onChange={(inputRegisterCount) => onChange({ inputRegisterCount })}
           />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Holding regs</Label>
-          <Input
-            type="number"
+          <NumberInput
             min={0}
             max={125}
             value={slave.holdingRegisterCount}
-            onChange={(e) =>
-              onChange({ holdingRegisterCount: Number(e.target.value) || 0 })
+            onChange={(holdingRegisterCount) =>
+              onChange({ holdingRegisterCount })
             }
           />
         </div>
@@ -335,16 +349,12 @@ export default function SimulatorSetup() {
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="sim-port">TCP port</Label>
-                <Input
+                <NumberInput
                   id="sim-port"
-                  type="number"
                   min={1}
                   max={65535}
                   value={config.tcpPort}
-                  onChange={(e) =>
-                    setConfig({ tcpPort: Number(e.target.value) || 0 })
-                  }
-                  required
+                  onChange={(tcpPort) => setConfig({ tcpPort })}
                 />
                 <p className="text-xs text-muted-foreground">
                   5021 avoids clashing with the local test-rig slave on 5020.
@@ -352,15 +362,13 @@ export default function SimulatorSetup() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="sim-tick">Tag animation tick (ms)</Label>
-                <Input
+                <NumberInput
                   id="sim-tick"
-                  type="number"
                   min={1}
+                  max={60000}
+                  step={50}
                   value={config.tickMs}
-                  onChange={(e) =>
-                    setConfig({ tickMs: Number(e.target.value) || 0 })
-                  }
-                  required
+                  onChange={(tickMs) => setConfig({ tickMs })}
                 />
                 <p className="text-xs text-muted-foreground">
                   Ignored if no slave has any tags.

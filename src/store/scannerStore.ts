@@ -21,7 +21,9 @@ export const DEFAULT_RTU_CONFIG: RtuConfig = {
   port: "",
   baudRate: 9600,
   dataBits: 8,
-  parity: "none",
+  // 8-E-1 is what the Modbus serial spec actually mandates. 8-N-1 is more
+  // common on shipping hardware, so it's the very next option in the picker.
+  parity: "even",
   stopBits: 1,
   unitId: 1,
   timeoutMs: 1000,

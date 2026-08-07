@@ -10,6 +10,14 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { errorMessage, listSerialPorts, rtuConnect, tcpConnect } from "@/lib/ipc";
 import type { Parity, SerialPortInfo, Transport } from "@/lib/types";
 import { useScannerStore } from "@/store/scannerStore";
@@ -17,6 +25,14 @@ import { useScannerStore } from "@/store/scannerStore";
 const BAUD_PRESETS = [1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200];
 
 type FramePreset = "8N1" | "8E1" | "8O1" | "8N2" | "custom";
+
+/** Ordered as offered in the UI — the spec default leads. */
+const FRAME_PRESETS: { value: FramePreset; label: string }[] = [
+  { value: "8E1", label: "8-E-1 — Modbus spec default" },
+  { value: "8N1", label: "8-N-1 — most common in practice" },
+  { value: "8O1", label: "8-O-1" },
+  { value: "8N2", label: "8-N-2" },
+];
 
 function framePresetOf(
   dataBits: number,
@@ -48,9 +64,6 @@ function applyFramePreset(preset: FramePreset): {
       return null;
   }
 }
-
-const selectClass =
-  "h-8 w-full rounded-lg border border-input bg-background text-foreground px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 function TransportPicker({
   portCount,
@@ -143,30 +156,22 @@ function TcpForm() {
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="port">Port</Label>
-              <Input
+              <NumberInput
                 id="port"
-                type="number"
                 min={1}
                 max={65535}
                 value={tcpConfig.port}
-                onChange={(e) =>
-                  setTcpConfig({ port: Number(e.target.value) || 0 })
-                }
-                required
+                onChange={(port) => setTcpConfig({ port })}
               />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="tcp-unit">Unit / Slave ID</Label>
-              <Input
+              <NumberInput
                 id="tcp-unit"
-                type="number"
                 min={1}
                 max={247}
                 value={tcpConfig.unitId}
-                onChange={(e) =>
-                  setTcpConfig({ unitId: Number(e.target.value) || 1 })
-                }
-                required
+                onChange={(unitId) => setTcpConfig({ unitId })}
               />
               <p className="text-xs text-muted-foreground">
                 1–247, changeable later
@@ -186,28 +191,23 @@ function TcpForm() {
             <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="tcp-timeout">Timeout (ms)</Label>
-                <Input
+                <NumberInput
                   id="tcp-timeout"
-                  type="number"
                   min={50}
                   max={60000}
+                  step={50}
                   value={tcpConfig.timeoutMs}
-                  onChange={(e) =>
-                    setTcpConfig({ timeoutMs: Number(e.target.value) || 0 })
-                  }
+                  onChange={(timeoutMs) => setTcpConfig({ timeoutMs })}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="tcp-retries">Retries</Label>
-                <Input
+                <NumberInput
                   id="tcp-retries"
-                  type="number"
                   min={0}
                   max={10}
                   value={tcpConfig.retries}
-                  onChange={(e) =>
-                    setTcpConfig({ retries: Number(e.target.value) || 0 })
-                  }
+                  onChange={(retries) => setTcpConfig({ retries })}
                 />
               </div>
             </div>
@@ -300,7 +300,8 @@ function RtuForm() {
       <CardHeader>
         <CardTitle>RTU connection</CardTitle>
         <CardDescription>
-          USB–RS485 adapters and virtual serial pairs. Defaults are 9600 8-N-1.
+          USB–RS485 adapters and virtual serial pairs. Defaults are 9600 8-E-1;
+          switch to 8-N-1 if the device doesn't answer.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -330,25 +331,27 @@ function RtuForm() {
                 required
               />
             ) : (
-              <select
-                id="serial-port"
-                className={selectClass}
+              <Select
                 value={rtuConfig.port}
-                onChange={(e) => setRtuConfig({ port: e.target.value })}
-                required
+                disabled={!ports || ports.length === 0}
+                onValueChange={(port) => setRtuConfig({ port })}
               >
-                {(!ports || ports.length === 0) && (
-                  <option value="">
-                    {portsLoading ? "Scanning…" : "No ports found"}
-                  </option>
-                )}
-                {ports?.map((p) => (
-                  <option key={p.portName} value={p.portName}>
-                    {p.portName}
-                    {p.product ? ` — ${p.product}` : ""}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="Serial port">
+                  <SelectValue
+                    placeholder={
+                      portsLoading ? "Scanning…" : "No ports found"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {ports?.map((p) => (
+                    <SelectItem key={p.portName} value={p.portName}>
+                      {p.portName}
+                      {p.product ? ` — ${p.product}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
 
             {selectedPort && (selectedPort.product || selectedPort.manufacturer) && (
@@ -381,57 +384,58 @@ function RtuForm() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="baud">Baud rate</Label>
-              <select
-                id="baud"
-                className={selectClass}
-                value={rtuConfig.baudRate}
-                onChange={(e) =>
-                  setRtuConfig({ baudRate: Number(e.target.value) })
-                }
+              <Label>Baud rate</Label>
+              <Select
+                value={String(rtuConfig.baudRate)}
+                onValueChange={(v) => setRtuConfig({ baudRate: Number(v) })}
               >
-                {BAUD_PRESETS.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="Baud rate">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BAUD_PRESETS.map((b) => (
+                    <SelectItem key={b} value={String(b)}>
+                      {b}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rtu-unit">Unit / Slave ID</Label>
-              <Input
+              <NumberInput
                 id="rtu-unit"
-                type="number"
                 min={1}
                 max={247}
                 value={rtuConfig.unitId}
-                onChange={(e) =>
-                  setRtuConfig({ unitId: Number(e.target.value) || 1 })
-                }
-                required
+                onChange={(unitId) => setRtuConfig({ unitId })}
               />
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="frame">Format</Label>
-            <select
-              id="frame"
-              className={selectClass}
+            <Label>Format</Label>
+            <Select
               value={framePreset}
-              onChange={(e) => {
-                const applied = applyFramePreset(e.target.value as FramePreset);
+              onValueChange={(v) => {
+                const applied = applyFramePreset(v as FramePreset);
                 if (applied) setRtuConfig(applied);
               }}
             >
-              <option value="8N1">8-N-1 (most common)</option>
-              <option value="8E1">8-E-1 (spec default)</option>
-              <option value="8O1">8-O-1</option>
-              <option value="8N2">8-N-2</option>
-              {framePreset === "custom" && (
-                <option value="custom">Custom (see Advanced)</option>
-              )}
-            </select>
+              <SelectTrigger aria-label="Serial frame format">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {FRAME_PRESETS.map((p) => (
+                  <SelectItem key={p.value} value={p.value}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+                {framePreset === "custom" && (
+                  <SelectItem value="custom">Custom (see Advanced)</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
             <p className="text-xs text-muted-foreground">
               data bits · parity · stop bits
             </p>
@@ -448,73 +452,81 @@ function RtuForm() {
           {showAdvanced && (
             <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="data-bits">Data bits</Label>
-                <select
-                  id="data-bits"
-                  className={selectClass}
-                  value={rtuConfig.dataBits}
-                  onChange={(e) =>
-                    setRtuConfig({ dataBits: Number(e.target.value) })
-                  }
+                <Label>Data bits</Label>
+                <Select
+                  value={String(rtuConfig.dataBits)}
+                  onValueChange={(v) => setRtuConfig({ dataBits: Number(v) })}
                 >
-                  <option value={8}>8</option>
-                  <option value={7}>7</option>
-                </select>
+                  <SelectTrigger aria-label="Data bits">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="8">8</SelectItem>
+                    <SelectItem value="7">7</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="parity">Parity</Label>
-                <select
-                  id="parity"
-                  className={selectClass}
+                <Label>Parity</Label>
+                <Select
                   value={rtuConfig.parity}
-                  onChange={(e) =>
-                    setRtuConfig({ parity: e.target.value as Parity })
-                  }
+                  onValueChange={(v) => setRtuConfig({ parity: v as Parity })}
                 >
-                  <option value="none">None</option>
-                  <option value="even">Even</option>
-                  <option value="odd">Odd</option>
-                </select>
+                  <SelectTrigger aria-label="Parity">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="even">Even</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="odd">Odd</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="stop-bits">Stop bits</Label>
-                <select
-                  id="stop-bits"
-                  className={selectClass}
-                  value={rtuConfig.stopBits}
-                  onChange={(e) =>
-                    setRtuConfig({ stopBits: Number(e.target.value) })
-                  }
+                <Label>Stop bits</Label>
+                <Select
+                  value={String(rtuConfig.stopBits)}
+                  onValueChange={(v) => setRtuConfig({ stopBits: Number(v) })}
                 >
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
-                </select>
+                  <SelectTrigger aria-label="Stop bits">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1</SelectItem>
+                    <SelectItem value="2">2</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="rtu-timeout">Timeout (ms)</Label>
-                <Input
+                <NumberInput
                   id="rtu-timeout"
-                  type="number"
                   min={50}
                   max={60000}
+                  step={50}
                   value={rtuConfig.timeoutMs}
-                  onChange={(e) =>
-                    setRtuConfig({ timeoutMs: Number(e.target.value) || 0 })
-                  }
+                  onChange={(timeoutMs) => setRtuConfig({ timeoutMs })}
                 />
               </div>
               <div className="col-span-2 flex flex-col gap-1.5">
                 <Label htmlFor="ifd">Inter-frame delay (µs)</Label>
+                {/* Genuinely nullable — empty means "let the driver compute
+                    3.5 char times", which is different from 0. So this one
+                    keeps its own text state rather than using NumberInput. */}
                 <Input
                   id="ifd"
-                  type="number"
-                  min={0}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="tabular-nums"
                   placeholder="auto (3.5 char times)"
                   value={rtuConfig.interFrameDelayUs ?? ""}
                   onChange={(e) => {
-                    const v = e.target.value;
+                    const v = e.target.value.trim();
+                    if (v !== "" && !/^\d+$/.test(v)) return;
                     setRtuConfig({
-                      interFrameDelayUs: v === "" ? null : Number(v) || 0,
+                      interFrameDelayUs: v === "" ? null : Number(v),
                     });
                   }}
                 />

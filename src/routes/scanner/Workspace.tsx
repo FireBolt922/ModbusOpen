@@ -4,11 +4,18 @@ import { ConnectionPill } from "@/components/ConnectionPill";
 import { FormatPicker } from "@/components/FormatPicker";
 import { FrameLog, MAX_FRAMES } from "@/components/FrameLog";
 import { RegisterTable } from "@/components/RegisterTable";
-import { StatsFooter } from "@/components/StatsFooter";
+import { StatsBar } from "@/components/StatsBar";
 import { WritePanel } from "@/components/WritePanel";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { tableToCsv } from "@/lib/format";
 import {
   disconnect,
@@ -36,9 +43,6 @@ const READ_FUNCTIONS: { value: FunctionCode; label: string }[] = [
   { value: "read_holding_registers", label: "03 Read Holding" },
   { value: "read_input_registers", label: "04 Read Input" },
 ];
-
-const selectClass =
-  "h-8 rounded-lg border border-input bg-background text-foreground px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 function isBitFc(fc: FunctionCode): boolean {
   return fc === "read_coils" || fc === "read_discrete_inputs";
@@ -234,9 +238,13 @@ export default function ScannerWorkspace() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2">
         <ConnectionPill connected summary={connection.summary} />
-        <div className="flex items-center gap-2">
+        {/* Counters ride in the top bar — they're the first thing you check
+            when a device goes quiet, so they sit beside the connection, not
+            in a footer three screens below the controls that caused them. */}
+        <StatsBar stats={stats} />
+        <div className="ml-auto flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -253,51 +261,46 @@ export default function ScannerWorkspace() {
           <Label htmlFor="unit" className="text-xs text-muted-foreground">
             Unit
           </Label>
-          <Input
+          <NumberInput
             id="unit"
-            type="number"
             min={1}
             max={247}
             className="w-20"
             value={pollConfig.unitId}
-            onChange={(e) => updateField("unitId", Number(e.target.value) || 1)}
+            onChange={(v) => updateField("unitId", v)}
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <Label htmlFor="fc" className="text-xs text-muted-foreground">
-            Function
-          </Label>
-          <select
-            id="fc"
-            className={selectClass}
+          <Label className="text-xs text-muted-foreground">Function</Label>
+          <Select
             value={pollConfig.function}
-            onChange={(e) =>
-              updateField("function", e.target.value as FunctionCode)
-            }
+            onValueChange={(v) => updateField("function", v as FunctionCode)}
           >
-            {READ_FUNCTIONS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-44" aria-label="Function code">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {READ_FUNCTIONS.map((f) => (
+                <SelectItem key={f.value} value={f.value}>
+                  {f.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex flex-col gap-1">
           <Label htmlFor="start" className="text-xs text-muted-foreground">
             Start (0-based wire)
           </Label>
-          <Input
+          <NumberInput
             id="start"
-            type="number"
             min={0}
             max={65535}
             className="w-28"
             value={pollConfig.startAddress}
-            onChange={(e) =>
-              updateField("startAddress", Number(e.target.value) || 0)
-            }
+            onChange={(v) => updateField("startAddress", v)}
           />
         </div>
 
@@ -305,15 +308,17 @@ export default function ScannerWorkspace() {
           <Label htmlFor="qty" className="text-xs text-muted-foreground">
             Qty
           </Label>
-          <Input
+          <NumberInput
             id="qty"
-            type="number"
             min={1}
             max={maxQty}
             className="w-20"
             value={pollConfig.quantity}
-            onChange={(e) =>
-              updateField("quantity", Number(e.target.value) || 0)
+            onChange={(v) => updateField("quantity", v)}
+            onClamp={(bounded, typed) =>
+              setActionError(
+                `${typed} exceeds the ${maxQty}-${bitMode ? "bit" : "register"} limit for a single request — clamped to ${bounded}.`,
+              )
             }
           />
         </div>
@@ -322,16 +327,14 @@ export default function ScannerWorkspace() {
           <Label htmlFor="interval" className="text-xs text-muted-foreground">
             Interval (ms)
           </Label>
-          <Input
+          <NumberInput
             id="interval"
-            type="number"
             min={50}
             max={60000}
+            step={50}
             className="w-24"
             value={pollConfig.intervalMs}
-            onChange={(e) =>
-              updateField("intervalMs", Number(e.target.value) || 0)
-            }
+            onChange={(v) => updateField("intervalMs", v)}
           />
         </div>
 
@@ -391,9 +394,25 @@ export default function ScannerWorkspace() {
         </div>
       </section>
 
-      {actionError && (
-        <div className="border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {actionError}
+      {/* One error line for the whole screen. Poll failures used to live in the
+          footer and action failures up here, which meant two places to look. */}
+      {(actionError ?? lastError ?? stats.lastError) && (
+        <div
+          className="flex items-start gap-2 border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          <span className="flex-1">
+            {actionError ?? lastError ?? stats.lastError}
+          </span>
+          {actionError && (
+            <button
+              type="button"
+              className="shrink-0 text-xs underline underline-offset-4 hover:no-underline"
+              onClick={() => setActionError(null)}
+            >
+              Dismiss
+            </button>
+          )}
         </div>
       )}
 
@@ -426,8 +445,6 @@ export default function ScannerWorkspace() {
         onClear={() => setFrames([])}
         onClose={() => setShowFrames(false)}
       />
-
-      <StatsFooter stats={stats} lastError={lastError} />
     </div>
   );
 }

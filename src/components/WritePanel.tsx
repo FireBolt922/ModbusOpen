@@ -2,12 +2,17 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { FormatPicker } from "@/components/FormatPicker";
 import { errorMessage, writeSingleCoil, writeTyped } from "@/lib/ipc";
 import type { DataFormat, TypedValue } from "@/lib/types";
-
-const selectClass =
-  "h-8 rounded-lg border border-input bg-background text-foreground px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 type WriteMode = "typed" | "coil";
 
@@ -162,24 +167,27 @@ export function WritePanel({
       <form className="flex flex-wrap items-end gap-3" onSubmit={handleWrite}>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Mode</Label>
-          <select
-            className={selectClass}
+          <Select
             value={mode}
-            onChange={(e) => setMode(e.target.value as WriteMode)}
+            onValueChange={(v) => setMode(v as WriteMode)}
           >
-            <option value="typed">Register (FC06/FC16)</option>
-            <option value="coil">Coil (FC05)</option>
-          </select>
+            <SelectTrigger className="w-48" aria-label="Write mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="typed">Register (FC06/FC16)</SelectItem>
+              <SelectItem value="coil">Coil (FC05)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Address</Label>
-          <Input
-            type="number"
+          <NumberInput
             min={0}
             max={65535}
             className="w-28"
             value={address}
-            onChange={(e) => setAddress(Number(e.target.value) || 0)}
+            onChange={setAddress}
           />
         </div>
         <div className="flex flex-col gap-1">

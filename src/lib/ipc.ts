@@ -223,3 +223,22 @@ export function onSimUpdate(
 ): Promise<UnlistenFn> {
   return listen<SimulatorSnapshot>("sim-update", (e) => cb(e.payload));
 }
+
+/* ------------------------------------------------------------------ shell */
+
+/**
+ * Open a URL in the user's default browser. Same rule as the invoke wrappers
+ * above: components don't reach for Tauri plugins directly.
+ *
+ * Failure is non-fatal — a docs link that doesn't open shouldn't throw into a
+ * component's render path, so callers get a boolean instead of a rejection.
+ */
+export async function openExternal(url: string): Promise<boolean> {
+  try {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return true;
+  } catch {
+    return false;
+  }
+}

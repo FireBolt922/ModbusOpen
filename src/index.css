@@ -126,5 +126,52 @@
     }
   html {
     @apply font-sans;
+    /* Tells the engine our UI is dark. On Linux, WebKitGTK otherwise paints
+       every native control (scrollbars, spinners, caret, autofill, the
+       <select> popup) from the GTK theme, which under a dark GTK theme comes
+       out white-on-white — see tauri-apps/tauri#11755 and WebKit bug 202194.
+       This app is dark-only (`class="dark"` is hardcoded in index.html), so
+       state it once here rather than per-control. */
+    color-scheme: dark;
+    }
+
+  /* Belt and braces for the same bug: any native control that survives gets
+     our colours forced onto it, and the spinner buttons — which WebKitGTK
+     draws in GTK grey regardless — are removed outright. All numeric fields
+     use <NumberInput>, which is a text input with our own arrow-key stepping. */
+  select,
+  option,
+  optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+    }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+    }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+    }
+
+  /* Scrollbars: WebKitGTK honours these, GTK's own overlay bars do not apply
+     inside the webview. Keeps the register table from showing a light gutter. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+    }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+    }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+    background-clip: content-box;
     }
 }
