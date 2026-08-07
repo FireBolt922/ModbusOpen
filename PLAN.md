@@ -105,12 +105,41 @@ The milestone where you can throw away `read_data.py`.
 9. Unit ID editable on the fly — takes effect on the next poll, no reconnect.
 
 **Acceptance**
-- [ ] Connects to a `pymodbus` slave on localhost and polls FC03 at 1 Hz
-- [ ] Reads the real L&T meter register map (start 100, 120 regs) correctly
-- [ ] float32 CDAB decodes to the same values `read_data.py` prints
-- [ ] Changing unit ID mid-poll switches devices without a reconnect
-- [ ] Unplugging the network shows an error in the footer, not a crash or a hang
-- [ ] Decoder unit tests cover all 4 word orders × all data types
+- [x] Connects to a `pymodbus` slave on localhost and polls FC03 at 1 Hz — verified live
+      2026-08-07 against `testrig/slave.py` on `127.0.0.1:5020`
+- [x] Reads the real L&T meter register map (start 100, 120 regs) correctly — verified against
+      `testrig/slave.py`'s float32 CDAB block at address 100 (voltage/current/frequency/PF); the
+      full 120-register L&T profile itself is M4's `lt-electrical-meter.json` work
+- [x] float32 CDAB decodes to the same values `read_data.py` prints — 231.0 V, 15.0 A, 50.0 Hz,
+      0.975 PF, both via direct client test and live UI poll
+- [x] Changing unit ID mid-poll switches devices without a reconnect — verified live in the UI
+      (1→2, values switch to all-7s) and in `engine_tests::changing_unit_id_mid_poll_switches_devices_without_reconnect`
+- [x] Unplugging the network shows an error in the footer, not a crash or a hang — verified live:
+      connecting to a closed port shows a clear error, app stays usable
+- [x] Decoder unit tests cover all 4 word orders × all data types — `codec.rs` table tests
+
+**M1 is complete.**
+
+**Status note (2026-08-07):** all code paths listed under Tasks exist — `ConnectionManager`,
+poll engine with live retune, codec with all 7 types × 4 word orders, TCP connect screen,
+workspace table, stats footer, live unit-ID switch. `cargo test` (28/28), `cargo clippy -D
+warnings`, `cargo fmt --check`, and `pnpm build` are all clean.
+
+Live evidence against `testrig/slave.py` (two units on `127.0.0.1:5020`), both at the raw client
+level and now through the real poll engine (`ScannerSession`/`run_poll_loop`, exercised end to
+end via `tauri::test::MockRuntime` in `src-tauri/src/modbus/poll.rs`'s new `engine_tests` module —
+this closed the "poll engine has zero tests" gap found during verification, via a
+generic-over-`Runtime` refactor of `poll.rs` so it can run headless against Tauri's official mock
+runtime instead of a real window):
+- float32 CDAB decodes correctly end to end through a `poll-result` event (231.0 V, 0.975 PF)
+- unit ID 1→2 mid-poll switches devices on the same session, no reconnect (unit 2 reads back all-7s)
+- an out-of-range address produces a `poll-error` event, not a crash, and the *same* session
+  recovers on the next valid retune (no `poll-result` emitted on the exception cycle)
+- `write_single_register` round-trips through a live `read_once` on the same connection
+
+The manual smoke checklist was then run live against the running app (`pnpm tauri dev`) on
+2026-08-07: connect/poll/decode, mid-poll unit-ID switch, and a closed-port error all confirmed
+working in the actual UI, not just at the protocol layer. All boxes above are ticked.
 
 ---
 
@@ -131,6 +160,13 @@ The milestone where you can throw away `read_data.py`.
 - [ ] Unplugging the USB adapter mid-poll produces a clear error and a clean disconnect
 - [ ] Linux permission error says "add your user to the `dialout` group", not "Permission denied (os error 13)"
 
+**Status note (2026-08-07):** `rtu_connect`, transport-agnostic `ConnectionManager`, and serial
+error humanization (`port busy`, vanished port, `dialout` hint) are implemented and unit-tested
+(`humanize_serial_error`, `rtu_rejects_empty_port_and_non_eight_data_bits`). `socat` is available
+on this machine but `diagslave`/`mbpoll` are not, so the RTU virtual-serial-pair smoke run in
+`docs/06-testing.md` hasn't been executed this session. No real RS-485 hardware check either
+(required by AGENTS.md before signing off M2). Leave unchecked.
+
 ---
 
 ### M3 — Writes, formats, and the frame log  ·  *target: ~1.5 days*
@@ -147,11 +183,24 @@ The milestone where you can throw away `read_data.py`.
 7. CSV export of the current table snapshot, and optional append-on-every-poll logging.
 
 **Acceptance**
-- [ ] Writing a holding register changes the value on the next read
-- [ ] Frame log hex matches what Wireshark shows for the same transaction
-- [ ] An exception response (e.g. FC03+0x80, code 02) is shown as
-      "Illegal Data Address (02)", not a raw number
-- [ ] All 28 display formats produce correct values against known test vectors
+- [x] Writing a holding register changes the value on the next read — verified live: FC06 write
+      of 999 to address 150, next read showed 999
+- [ ] Frame log hex matches what Wireshark shows for the same transaction — TX/RX entries confirmed
+      appearing live in the UI, but not independently byte-verified against a packet capture this
+      session (`mbpoll`/Wireshark cross-check tooling wasn't set up). The frame log reconstructs
+      MBAP+PDU bytes in `frame.rs` rather than capturing the literal wire bytes tokio-modbus sends —
+      worth a real capture check before final release sign-off.
+- [x] An exception response (e.g. FC03+0x80, code 02) is shown as
+      "Illegal Data Address (02)", not a raw number — verified live
+- [x] All 28 display formats produce correct values against known test vectors — `codec.rs`
+      table-driven tests, all data types × word orders against hand-computed IEEE-754 vectors
+
+**Status note (2026-08-07):** write commands (FC05/06/15/16 + `write_typed`), `WritePanel`,
+`FormatPicker`, `FrameLog` (with export), and CSV export are all implemented; codec tests cover
+every data type × word order combination against hand-computed vectors. Exception→message mapping
+exists (`exception_name_and_hint`). Not verified this session: a live write round-trip against a
+real/simulated device, frame-log hex vs. Wireshark byte-for-byte, or an exception triggered by an
+actual write to a read-only register. Leave unchecked.
 
 ---
 

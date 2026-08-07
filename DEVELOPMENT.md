@@ -3,9 +3,12 @@
 How to get ModbusOpen running locally, and how the pieces fit together. Kept up to date as
 milestones land — see [PLAN.md](PLAN.md) for what "done" means at each stage.
 
-**Current status:** M0 (Skeleton) implemented. App launches, dark theme is default, home screen
-routes to four placeholder mode screens, and `list_serial_ports` is wired end to end (Rust →
-Tauri IPC → React).
+**Current status:** M0 (Skeleton) and M1 (TCP Scanner) complete and verified — live UI smoke pass
+done 2026-08-07 against `testrig/slave.py`. M2 (RTU) and most of M3 (writes, formats, frame log)
+are implemented and pass automated tests (28/28), with core write/exception-message behaviour also
+confirmed live; a byte-for-byte frame-log-vs-Wireshark check and the RTU virtual-serial-pair smoke
+run are the remaining open items — see PLAN.md's per-milestone status notes. M4 (Simulator) and M5
+(Polish) are not started — `SimulatorSetup`/`SimulatorWorkspace` are placeholder screens only.
 
 ---
 

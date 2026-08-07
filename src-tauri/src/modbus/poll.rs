@@ -6,7 +6,7 @@
 use std::time::Instant;
 
 use chrono::Utc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
@@ -116,8 +116,8 @@ pub struct ScannerSession {
 }
 
 impl ScannerSession {
-    pub fn spawn(
-        app: AppHandle,
+    pub fn spawn<R: Runtime>(
+        app: AppHandle<R>,
         session_id: u64,
         transport: Transport,
         summary: String,
@@ -158,8 +158,8 @@ impl ScannerSession {
     }
 }
 
-async fn run_poll_loop(
-    app: AppHandle,
+async fn run_poll_loop<R: Runtime>(
+    app: AppHandle<R>,
     session_id: u64,
     mut client: ModbusClient,
     mut cmd_rx: mpsc::Receiver<PollCommand>,
@@ -334,8 +334,8 @@ fn is_bit_function(fc: FunctionCode) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn emit_tx_rx(
-    app: &AppHandle,
+fn emit_tx_rx<R: Runtime>(
+    app: &AppHandle<R>,
     session_id: u64,
     transport: Transport,
     tid: u16,
@@ -376,8 +376,8 @@ fn emit_tx_rx(
     );
 }
 
-async fn read_cycle(
-    app: &AppHandle,
+async fn read_cycle<R: Runtime>(
+    app: &AppHandle<R>,
     client: &mut ModbusClient,
     cfg: &PollConfig,
     session_id: u64,
@@ -491,8 +491,8 @@ async fn read_cycle(
     }
 }
 
-async fn write_cycle(
-    app: &AppHandle,
+async fn write_cycle<R: Runtime>(
+    app: &AppHandle<R>,
     client: &mut ModbusClient,
     req: WriteRequest,
     session_id: u64,
@@ -565,8 +565,8 @@ async fn write_cycle(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn write_single_coil_inner(
-    app: &AppHandle,
+async fn write_single_coil_inner<R: Runtime>(
+    app: &AppHandle<R>,
     client: &mut ModbusClient,
     unit_id: u8,
     address: u16,
@@ -613,8 +613,8 @@ async fn write_single_coil_inner(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn write_single_register_inner(
-    app: &AppHandle,
+async fn write_single_register_inner<R: Runtime>(
+    app: &AppHandle<R>,
     client: &mut ModbusClient,
     unit_id: u8,
     address: u16,
@@ -660,8 +660,8 @@ async fn write_single_register_inner(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn write_multiple_coils_inner(
-    app: &AppHandle,
+async fn write_multiple_coils_inner<R: Runtime>(
+    app: &AppHandle<R>,
     client: &mut ModbusClient,
     unit_id: u8,
     address: u16,
@@ -708,8 +708,8 @@ async fn write_multiple_coils_inner(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn write_multiple_registers_inner(
-    app: &AppHandle,
+async fn write_multiple_registers_inner<R: Runtime>(
+    app: &AppHandle<R>,
     client: &mut ModbusClient,
     unit_id: u8,
     address: u16,
@@ -759,8 +759,8 @@ async fn write_multiple_registers_inner(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn write_err(
-    app: &AppHandle,
+fn write_err<R: Runtime>(
+    app: &AppHandle<R>,
     e: ReadError,
     fc: u8,
     unit_id: u8,
@@ -789,4 +789,286 @@ fn write_err(
     }
     let _ = address;
     Err(map_read_error(e, unit_id, 1000, stats))
+}
+
+#[cfg(test)]
+mod engine_tests {
+    //! Exercises `ScannerSession`/`run_poll_loop` end to end — the poll
+    //! engine's control flow (live retune, exception handling, writes) isn't
+    //! covered anywhere else, since `client.rs`'s smoke test only calls
+    //! `ModbusClient` directly and skips the channel/event-loop machinery.
+    //! Live against `testrig/slave.py` on :5020; skips quietly offline.
+    use std::sync::{Arc, Mutex as StdMutex};
+    use std::time::Duration as StdDuration;
+
+    use serde_json::Value;
+    use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
+    use tauri::{App, Listener};
+
+    use super::*;
+    use crate::modbus::types::{DataFormat, DataType, TcpConfig, WordOrder};
+
+    fn test_app() -> App<MockRuntime> {
+        mock_builder()
+            .build(mock_context(noop_assets()))
+            .expect("failed to build mock tauri app")
+    }
+
+    async fn connect_unit(unit_id: u8) -> Option<ModbusClient> {
+        let config = TcpConfig {
+            host: "127.0.0.1".into(),
+            port: 5020,
+            unit_id,
+            timeout_ms: 1000,
+            retries: 1,
+        };
+        ModbusClient::connect_tcp(&config).await.ok()
+    }
+
+    fn collect_events(app: &App<MockRuntime>, name: &'static str) -> Arc<StdMutex<Vec<String>>> {
+        let events = Arc::new(StdMutex::new(Vec::new()));
+        let sink = events.clone();
+        app.handle().listen(name, move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        events
+    }
+
+    fn float32_cdab_format() -> DataFormat {
+        DataFormat {
+            data_type: DataType::Float32,
+            word_order: WordOrder::Cdab,
+            scale: 1.0,
+            offset: 0.0,
+        }
+    }
+
+    async fn wait_for(events: &Arc<StdMutex<Vec<String>>>, min_count: usize) -> bool {
+        for _ in 0..50 {
+            if events.lock().unwrap().len() >= min_count {
+                return true;
+            }
+            tokio::time::sleep(StdDuration::from_millis(20)).await;
+        }
+        false
+    }
+
+    #[tokio::test]
+    async fn poll_loop_emits_decoded_values_and_frames_from_live_slave() {
+        let Some(client) = connect_unit(1).await else {
+            eprintln!("skipping: no slave on 127.0.0.1:5020");
+            return;
+        };
+        let app = test_app();
+        let results = collect_events(&app, "poll-result");
+        let frames = collect_events(&app, "frame");
+
+        let session = ScannerSession::spawn(
+            app.handle().clone(),
+            1,
+            Transport::Tcp,
+            "test".into(),
+            client,
+        );
+        let cfg = PollConfig {
+            unit_id: 1,
+            function: FunctionCode::ReadHoldingRegisters,
+            start_address: 100,
+            quantity: 8,
+            interval_ms: 50,
+            format: float32_cdab_format(),
+        };
+        session.send(PollCommand::SetConfig(cfg)).await.unwrap();
+        session.send(PollCommand::Start).await.unwrap();
+
+        assert!(
+            wait_for(&results, 1).await,
+            "expected at least one poll-result event"
+        );
+        session.shutdown().await;
+
+        let payload = results.lock().unwrap()[0].clone();
+        let result: Value = serde_json::from_str(&payload).unwrap();
+        let registers = result["registers"].as_array().unwrap();
+        assert_eq!(registers.len(), 4, "4 float32 rows across 8 registers");
+        let voltage = registers[0]["value"]["value"].as_f64().unwrap();
+        assert!((voltage - 231.0).abs() < 0.01, "voltage={voltage}");
+        let power_factor = registers[3]["value"]["value"].as_f64().unwrap();
+        assert!(
+            (power_factor - 0.975).abs() < 0.001,
+            "power_factor={power_factor}"
+        );
+
+        // Both the request and the response must reach the frame log.
+        assert!(
+            frames.lock().unwrap().len() >= 2,
+            "expected a tx and rx frame per cycle"
+        );
+    }
+
+    #[tokio::test]
+    async fn changing_unit_id_mid_poll_switches_devices_without_reconnect() {
+        let Some(client) = connect_unit(1).await else {
+            eprintln!("skipping: no slave on 127.0.0.1:5020");
+            return;
+        };
+        let app = test_app();
+        let results = collect_events(&app, "poll-result");
+
+        let session = ScannerSession::spawn(
+            app.handle().clone(),
+            1,
+            Transport::Tcp,
+            "test".into(),
+            client,
+        );
+        let mut cfg = PollConfig {
+            unit_id: 1,
+            function: FunctionCode::ReadHoldingRegisters,
+            start_address: 0,
+            quantity: 4,
+            interval_ms: 50,
+            format: DataFormat {
+                data_type: DataType::Uint16,
+                word_order: WordOrder::Cdab,
+                scale: 1.0,
+                offset: 0.0,
+            },
+        };
+        session
+            .send(PollCommand::SetConfig(cfg.clone()))
+            .await
+            .unwrap();
+        session.send(PollCommand::Start).await.unwrap();
+        assert!(wait_for(&results, 1).await, "unit 1 never polled");
+
+        // Same session, same socket — only the unit ID changes.
+        cfg.unit_id = 2;
+        session.send(PollCommand::SetConfig(cfg)).await.unwrap();
+        assert!(
+            wait_for(&results, 2).await,
+            "unit 2 never polled after retune"
+        );
+        session.shutdown().await;
+
+        let payload = results.lock().unwrap().last().unwrap().clone();
+        let result: Value = serde_json::from_str(&payload).unwrap();
+        let registers = result["registers"].as_array().unwrap();
+        for row in registers {
+            assert_eq!(
+                row["value"]["value"].as_i64().unwrap(),
+                7,
+                "unit 2's registers are all 7 in testrig/slave.py"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn out_of_range_address_is_recoverable_and_poll_continues() {
+        let Some(client) = connect_unit(1).await else {
+            eprintln!("skipping: no slave on 127.0.0.1:5020");
+            return;
+        };
+        let app = test_app();
+        let results = collect_events(&app, "poll-result");
+        let errors = collect_events(&app, "poll-error");
+
+        let session = ScannerSession::spawn(
+            app.handle().clone(),
+            1,
+            Transport::Tcp,
+            "test".into(),
+            client,
+        );
+        let bad_cfg = PollConfig {
+            unit_id: 1,
+            function: FunctionCode::ReadHoldingRegisters,
+            start_address: 60_000,
+            quantity: 5,
+            interval_ms: 50,
+            format: DataFormat::default(),
+        };
+        session.send(PollCommand::SetConfig(bad_cfg)).await.unwrap();
+        session.send(PollCommand::Start).await.unwrap();
+        assert!(
+            wait_for(&errors, 1).await,
+            "expected a poll-error event for an out-of-range address"
+        );
+        assert!(
+            results.lock().unwrap().is_empty(),
+            "an exception must not also produce a poll-result"
+        );
+
+        // The session must still be alive: retuning to a valid range recovers.
+        let good_cfg = PollConfig {
+            unit_id: 1,
+            function: FunctionCode::ReadHoldingRegisters,
+            start_address: 0,
+            quantity: 4,
+            interval_ms: 50,
+            format: DataFormat::default(),
+        };
+        session
+            .send(PollCommand::SetConfig(good_cfg))
+            .await
+            .unwrap();
+        assert!(
+            wait_for(&results, 1).await,
+            "poll did not recover after retuning back to a valid address"
+        );
+        session.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn write_single_register_round_trips_through_read_once() {
+        let Some(client) = connect_unit(1).await else {
+            eprintln!("skipping: no slave on 127.0.0.1:5020");
+            return;
+        };
+        let app = test_app();
+        let session = ScannerSession::spawn(
+            app.handle().clone(),
+            1,
+            Transport::Tcp,
+            "test".into(),
+            client,
+        );
+
+        let (tx, rx) = oneshot::channel();
+        session
+            .send(PollCommand::Write(
+                WriteRequest::SingleRegister {
+                    unit_id: 1,
+                    address: 150,
+                    value: 4242,
+                },
+                tx,
+            ))
+            .await
+            .unwrap();
+        rx.await.unwrap().expect("write should succeed");
+
+        let (tx, rx) = oneshot::channel();
+        let cfg = PollConfig {
+            unit_id: 1,
+            function: FunctionCode::ReadHoldingRegisters,
+            start_address: 150,
+            quantity: 1,
+            interval_ms: 1000,
+            format: DataFormat {
+                data_type: DataType::Uint16,
+                word_order: WordOrder::Cdab,
+                scale: 1.0,
+                offset: 0.0,
+            },
+        };
+        session.send(PollCommand::ReadOnce(cfg, tx)).await.unwrap();
+        let result = rx.await.unwrap().expect("read-once should succeed");
+        session.shutdown().await;
+
+        match &result.registers[0].value {
+            TypedValue::Uint(v) => assert_eq!(*v, 4242),
+            other => panic!("expected uint16, got {other:?}"),
+        }
+    }
 }
