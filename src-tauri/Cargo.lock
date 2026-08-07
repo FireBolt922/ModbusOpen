@@ -466,8 +466,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 
@@ -2059,6 +2061,7 @@ dependencies = [
 name = "modbusopen"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "serde",
  "serde_json",
  "serialport",
@@ -2069,6 +2072,7 @@ dependencies = [
  "tokio",
  "tokio-modbus",
  "tokio-serial",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
 ]
