@@ -192,7 +192,7 @@ on: [push, pull_request]
   - cargo fmt --check
   - cargo clippy -- -D warnings
   - cargo test
-  - npm ci && npm run typecheck && npm run build
+  - pnpm install --frozen-lockfile && pnpm build
 
 on: tag v*
   - tauri-action → .dmg (universal), .msi, .AppImage + .deb

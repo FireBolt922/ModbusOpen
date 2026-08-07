@@ -34,8 +34,8 @@ Think ModScan/ModSim, but modern, free, and pleasant to use.
 ## Quick start
 
 ```bash
-npm install
-npm run tauri dev
+pnpm install
+pnpm tauri dev
 ```
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for prerequisites and platform-specific setup.

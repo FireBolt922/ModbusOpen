@@ -18,8 +18,7 @@ cargo fmt --check
 cargo clippy -- -D warnings
 cargo test
 cd ..
-npm run typecheck
-npm run build
+pnpm build   # runs tsc (typecheck) then vite build
 ```
 
 If `cargo test` skips `#[ignore]`d integration tests, run them explicitly:

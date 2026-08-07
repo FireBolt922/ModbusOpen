@@ -14,9 +14,12 @@ Tauri IPC → React).
 | Tool | Version used in this repo | Check |
 |---|---|---|
 | Node.js | 24.x (any current LTS works) | `node -v` |
-| npm | 11.x | `npm -v` |
+| pnpm | 10.x — **the only JS package manager used in this repo** | `pnpm -v` |
 | Rust | 1.88 via rustup | `rustc --version` |
 | Cargo | bundled with Rust | `cargo --version` |
+
+Don't have pnpm yet? `corepack enable` (ships with Node) will pick up the pinned version from
+`package.json`'s `packageManager` field automatically. Otherwise: `npm install -g pnpm`.
 
 Platform-specific Tauri v2 build dependencies (only needed once per machine):
 
@@ -42,17 +45,17 @@ Full details: https://v2.tauri.app/start/prerequisites/
 ```bash
 git clone <this repo>
 cd ModbusOpen
-npm install
+pnpm install
 ```
 
-That's it — `npm install` pulls the JS toolchain; Cargo resolves Rust deps on first build.
+That's it — `pnpm install` pulls the JS toolchain; Cargo resolves Rust deps on first build.
 
 ---
 
 ## 3. Run it
 
 ```bash
-npm run tauri dev
+pnpm tauri dev
 ```
 
 First run compiles the whole Rust dependency tree (~30–60s). Subsequent runs are incremental and
@@ -63,7 +66,7 @@ Frontend only, in a browser (no Tauri APIs available, `invoke()` calls will fail
 fast UI iteration on pure layout/styling):
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 ---
@@ -71,7 +74,7 @@ npm run dev
 ## 4. Build a release binary
 
 ```bash
-npm run tauri build
+pnpm tauri build
 ```
 
 Produces a platform-native installer under `src-tauri/target/release/bundle/` (`.dmg` on macOS,
@@ -95,7 +98,7 @@ cd src-tauri && cargo clippy -- -D warnings
 cd src-tauri && cargo fmt
 
 # Frontend: type-check + production build
-npm run build
+pnpm build
 ```
 
 `.github/workflows/ci.yml` runs all of the above on every push/PR to `main`.
@@ -145,7 +148,8 @@ re-export) — the macro's hidden codegen doesn't follow re-exports. Bit us once
 
 | Symptom | Likely cause |
 |---|---|
-| `strictPort` error on `npm run tauri dev` | Something else is bound to port 1420. Kill it or check for a stray previous `tauri dev` process. |
+| `strictPort` error on `pnpm tauri dev` | Something else is bound to port 1420. Kill it or check for a stray previous `tauri dev` process. |
+| `ERR_PNPM_...` about a mismatched `packageManager` | Your global pnpm doesn't match the version pinned in `package.json`. Run `corepack use pnpm@<version>` or just upgrade: `npm install -g pnpm@latest`. |
 | Blank white window | Frontend crashed before mount — check the terminal running `tauri dev`, not just the window. |
 | Linux: build fails looking for `udev.h` | Missing `libudev-dev` — see prerequisites above. |
 | macOS: unsigned app blocked by Gatekeeper | Right-click the `.app` → Open, once. We're not code-signing yet (see PLAN.md §3, open decisions). |

@@ -57,7 +57,7 @@ Get a window on screen and prove the toolchain works on all three platforms befo
 protocol code.
 
 **Tasks**
-1. `npm create tauri-app@latest` → React + TypeScript + Vite template into this repo.
+1. `pnpm create tauri-app@latest` → React + TypeScript + Vite template into this repo.
 2. Add Tailwind + shadcn/ui, set up dark theme as default.
 3. Rust deps: `tokio-modbus`, `tokio-serial`, `serialport`, `serde`, `thiserror`, `tracing`.
 4. Home screen: two cards — **Scan** and **Simulate** — plus a mode router.
@@ -65,7 +65,7 @@ protocol code.
 6. GitHub Actions: build `.dmg`, `.msi`, `.AppImage`/`.deb` on tag.
 
 **Acceptance**
-- [x] `npm run tauri dev` opens a window on macOS — verified: Rust core compiles clean
+- [x] `pnpm tauri dev` opens a window on macOS — verified: Rust core compiles clean
       (`cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` all pass), `tauri dev`
       launches, WebView child processes spawn, dev server serves the app shell.
 - [x] Home screen routes to two empty mode screens — `/scan` and `/simulate` render placeholder

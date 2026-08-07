@@ -12,11 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: install pnpm
+        uses: pnpm/action-setup@v4
+
       - name: setup node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: npm
+          cache: pnpm
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -38,11 +41,11 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: npm ci
-        run: npm ci
+      - name: install dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: npm build
-        run: npm run build
+      - name: build
+        run: pnpm build
 
       - name: cargo fmt -- --check
         working-directory: src-tauri

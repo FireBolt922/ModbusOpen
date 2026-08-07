@@ -71,6 +71,8 @@ Invoke these; don't reimplement what they cover.
 - Rust `AppError` mirrors to a TS type in `src/lib/ipc.ts` — keep the two in sync by hand and note
   it in the PR when either changes.
 - Table rendering is virtualized. Assume 10,000 rows.
+- **pnpm only.** No `npm`/`yarn` commands, and no `package-lock.json`/`yarn.lock` in the repo —
+  `pnpm-lock.yaml` is the single source of truth for the JS dependency tree.
 
 **Addressing — the #1 source of bugs**
 - Internally, **always 0-based wire addresses**. No exceptions.
@@ -98,5 +100,5 @@ Invoke these; don't reimplement what they cover.
 ## Definition of done for a milestone
 
 Every acceptance checkbox in PLAN.md is ticked, `cargo test` and `cargo clippy` are clean,
-`npm run build` succeeds, and the `milestone-check` skill has been run. Then update PLAN.md's
+`pnpm build` succeeds, and the `milestone-check` skill has been run. Then update PLAN.md's
 status line and commit.
