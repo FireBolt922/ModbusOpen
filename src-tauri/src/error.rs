@@ -134,10 +134,7 @@ mod tests {
     fn permission_denied_mentions_dialout() {
         let err = map_serial_open_error("/dev/ttyUSB0", "Permission denied (os error 13)");
         let msg = err.to_string();
-        assert!(
-            msg.contains("dialout"),
-            "expected dialout hint, got: {msg}"
-        );
+        assert!(msg.contains("dialout"), "expected dialout hint, got: {msg}");
         assert!(!msg.contains("os error 13"), "raw errno leaked: {msg}");
     }
 
@@ -152,6 +149,9 @@ mod tests {
     fn vanished_port_mentions_unplug() {
         let err = map_serial_open_error("/dev/ttyUSB0", "No such file or directory (os error 2)");
         let msg = err.to_string();
-        assert!(msg.contains("unplugged") || msg.contains("vanished"), "got: {msg}");
+        assert!(
+            msg.contains("unplugged") || msg.contains("vanished"),
+            "got: {msg}"
+        );
     }
 }
