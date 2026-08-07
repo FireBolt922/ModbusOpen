@@ -4,10 +4,6 @@
 //! No `.await` is ever held across a lock — every method here is a quick,
 //! synchronous read/write — so a plain `std::sync::Mutex` is correct and
 //! avoids the tokio-mutex cost on the hot request path.
-//!
-//! M4 foundation: exercised end to end by `server.rs`'s tests, not yet wired
-//! to a `sim_start` command (that's the next M4 slice — commands + UI).
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -224,6 +220,16 @@ impl ModbusStore {
         self.with_slave_mut(unit_id, |s| {
             write_words(&mut s.holding_registers, addr, values)
         })
+    }
+
+    /// A consistent, cloned snapshot of every slave, sorted by unit ID — the
+    /// source for `sim_snapshot` and the `sim-update` event payload.
+    pub fn snapshot(&self) -> Vec<(u8, SlaveStore)> {
+        let slaves = self.slaves.lock().unwrap();
+        let mut out: Vec<(u8, SlaveStore)> =
+            slaves.iter().map(|(id, s)| (*id, s.clone())).collect();
+        out.sort_by_key(|(id, _)| *id);
+        out
     }
 }
 

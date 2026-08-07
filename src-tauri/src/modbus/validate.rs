@@ -2,7 +2,7 @@
 //! here saves a full timeout and gives a better message than the resulting
 //! remote exception would. See `docs/reference/function-codes.md`.
 
-use super::types::{PollConfig, RtuConfig, TcpConfig};
+use super::types::{PollConfig, RtuConfig, SimulatorConfig, TcpConfig};
 use crate::error::AppError;
 
 pub fn validate_tcp_config(config: &TcpConfig) -> Result<(), AppError> {
@@ -86,6 +86,42 @@ pub fn validate_poll_config(config: &PollConfig) -> Result<(), AppError> {
     Ok(())
 }
 
+pub fn validate_simulator_config(config: &SimulatorConfig) -> Result<(), AppError> {
+    if config.tcp_port == 0 {
+        return Err(AppError::InvalidConfig(
+            "TCP port must be between 1-65535".to_string(),
+        ));
+    }
+    if config.slaves.is_empty() {
+        return Err(AppError::InvalidConfig(
+            "add at least one slave ID".to_string(),
+        ));
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    for slave in &config.slaves {
+        validate_unit_id(slave.unit_id)?;
+        if !seen.insert(slave.unit_id) {
+            return Err(AppError::InvalidConfig(format!(
+                "unit ID {} is used by more than one slave",
+                slave.unit_id
+            )));
+        }
+        if slave.coil_count == 0
+            && slave.discrete_count == 0
+            && slave.input_register_count == 0
+            && slave.holding_register_count == 0
+        {
+            return Err(AppError::InvalidConfig(format!(
+                "slave {} has no registers or coils — give it at least one block",
+                slave.unit_id
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,5 +195,54 @@ mod tests {
         assert!(validate_rtu_config(&cfg).is_err());
         cfg.data_bits = 8;
         assert!(validate_rtu_config(&cfg).is_ok());
+    }
+
+    fn base_simulator_config() -> SimulatorConfig {
+        use crate::modbus::types::SlaveSimConfig;
+        SimulatorConfig {
+            tcp_port: 5021,
+            slaves: vec![SlaveSimConfig {
+                unit_id: 1,
+                coil_count: 8,
+                discrete_count: 8,
+                input_register_count: 0,
+                holding_register_count: 50,
+            }],
+        }
+    }
+
+    #[test]
+    fn accepts_a_single_well_formed_slave() {
+        assert!(validate_simulator_config(&base_simulator_config()).is_ok());
+    }
+
+    #[test]
+    fn rejects_no_slaves() {
+        let mut cfg = base_simulator_config();
+        cfg.slaves.clear();
+        assert!(validate_simulator_config(&cfg).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_unit_ids() {
+        let mut cfg = base_simulator_config();
+        cfg.slaves.push(cfg.slaves[0].clone());
+        assert!(validate_simulator_config(&cfg).is_err());
+    }
+
+    #[test]
+    fn rejects_a_slave_with_no_blocks() {
+        let mut cfg = base_simulator_config();
+        cfg.slaves[0].coil_count = 0;
+        cfg.slaves[0].discrete_count = 0;
+        cfg.slaves[0].holding_register_count = 0;
+        assert!(validate_simulator_config(&cfg).is_err());
+    }
+
+    #[test]
+    fn rejects_zero_tcp_port() {
+        let mut cfg = base_simulator_config();
+        cfg.tcp_port = 0;
+        assert!(validate_simulator_config(&cfg).is_err());
     }
 }

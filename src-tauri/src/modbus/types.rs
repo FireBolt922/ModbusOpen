@@ -320,3 +320,51 @@ pub struct ConnectionLostEvent {
     pub session_id: u64,
     pub message: String,
 }
+
+/// One slave's register/coil block sizes, as configured from the UI —
+/// `sim_start` zero-fills each block to these counts. See
+/// `modbus::store::SlaveLayout` for the internal (non-wire) equivalent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlaveSimConfig {
+    pub unit_id: u8,
+    pub coil_count: u16,
+    pub discrete_count: u16,
+    pub input_register_count: u16,
+    pub holding_register_count: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulatorConfig {
+    pub tcp_port: u16,
+    pub slaves: Vec<SlaveSimConfig>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulatorInfo {
+    pub session_id: u64,
+    pub tcp_port: u16,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlaveSnapshot {
+    pub unit_id: u8,
+    pub coils: Vec<bool>,
+    pub discrete_inputs: Vec<bool>,
+    pub input_registers: Vec<u16>,
+    pub holding_registers: Vec<u16>,
+}
+
+/// `sim_snapshot`'s return value and the `sim-update` event payload —
+/// carries `session_id` so a stale event from a torn-down simulator session
+/// gets dropped by the UI instead of corrupting a new session's table.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulatorSnapshot {
+    pub session_id: u64,
+    pub tcp_port: u16,
+    pub slaves: Vec<SlaveSnapshot>,
+}

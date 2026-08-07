@@ -15,6 +15,9 @@ import type {
   PollResult,
   RtuConfig,
   SerialPortInfo,
+  SimulatorConfig,
+  SimulatorInfo,
+  SimulatorSnapshot,
   TcpConfig,
   TypedValue,
   WriteResult,
@@ -175,4 +178,48 @@ export async function writeTyped(
     value,
     format,
   });
+}
+
+export async function simStart(
+  config: SimulatorConfig,
+): Promise<SimulatorInfo> {
+  return invoke<SimulatorInfo>("sim_start", { config });
+}
+
+export async function simStop(): Promise<void> {
+  return invoke("sim_stop");
+}
+
+export async function simSnapshot(): Promise<SimulatorSnapshot> {
+  return invoke<SimulatorSnapshot>("sim_snapshot");
+}
+
+export async function simWriteRegister(
+  unitId: number,
+  address: number,
+  value: number,
+): Promise<SimulatorSnapshot> {
+  return invoke<SimulatorSnapshot>("sim_write_register", {
+    unitId,
+    address,
+    value,
+  });
+}
+
+export async function simWriteCoil(
+  unitId: number,
+  address: number,
+  value: boolean,
+): Promise<SimulatorSnapshot> {
+  return invoke<SimulatorSnapshot>("sim_write_coil", {
+    unitId,
+    address,
+    value,
+  });
+}
+
+export function onSimUpdate(
+  cb: (snapshot: SimulatorSnapshot) => void,
+): Promise<UnlistenFn> {
+  return listen<SimulatorSnapshot>("sim-update", (e) => cb(e.payload));
 }

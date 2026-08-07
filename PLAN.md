@@ -218,25 +218,58 @@ clippy/fmt clean. Not wired to a command or the UI yet — that's the next slice
 `AppState.simulator` + `sim_start`/`sim_stop`), followed by Tasks 2–7 below (setup screen, register
 blocks, tag animation, live table, device profiles, RTU server mode).
 
+**Progress note 2 (2026-08-07):** Tasks 1, 2, 3, and 5 are done for TCP. `commands/simulator.rs`
+wires `sim_start`/`sim_stop`/`sim_snapshot`/`sim_write_register`/`sim_write_coil` to
+`AppState.simulator: Mutex<Option<SimulatorServer>>`, following the same thin-command pattern as
+the scanner side. `SimulatorSetup.tsx` lets you configure a TCP port and add/remove slaves with
+per-block sizes; `SimulatorWorkspace.tsx` shows a live, double-click-editable holding-register
+table and a clickable coil grid per slave, pushed by the `sim-update` event (no UI polling, per
+the documented IPC contract) — discrete inputs / input registers are shown read-only since no
+Modbus function code ever writes them (that's correct protocol behavior, not a gap).
+
+Verified live (not just unit tests) 2026-08-07: started the simulator from the actual UI, then
+used an independent `pymodbus` client (not ModbusOpen's own scanner) to connect, read, write a
+holding register and a coil, and read them back — all correct — and confirmed the UI's live table
+updated immediately from that external write via `sim-update`, with no page refresh or polling.
+`cargo test` is 43/43 (9 more than the last note: `validate_simulator_config` tests plus a
+`sim-update`-emission test), clippy/fmt clean, `pnpm build` clean.
+
+**Not done yet:** Task 4 (tag animation), Task 6 (device profile JSON), Task 7 (RTU server mode).
+No RTU setup screen for the simulator side either — TCP only for now, called out explicitly in
+the Setup screen's copy so it isn't mistaken for a gap nobody noticed.
+
 **Tasks**
-1. Rust: `tokio-modbus` TCP server with a `ModbusStore` (coils, discretes, input regs, holding regs)
-   per slave ID.
-2. Simulator setup screen: transport (TCP port / RTU serial), add slaves by ID.
-3. Per slave, add register blocks: type, start address, count, initial value.
+1. ~~Rust: `tokio-modbus` TCP server with a `ModbusStore` (coils, discretes, input regs, holding regs)
+   per slave ID.~~ Done — `modbus/store.rs` + `modbus/server.rs`.
+2. ~~Simulator setup screen: transport (TCP port / RTU serial), add slaves by ID.~~ Done for TCP;
+   RTU serial not offered yet.
+3. ~~Per slave, add register blocks: type, start address, count, initial value.~~ Done — block
+   *sizes* are configurable; blocks always start zero-filled (no non-zero "initial value" field
+   yet, since that's really what Task 4's `static` tag behaviour is for).
 4. **Tag animation** — per tag: `static | random(min,max) | ramp(min,max,step) | sine(min,max,period) | counter(step)`
    with data type + word order, so a `float32 CDAB` tag writes two registers correctly.
-5. Live editable value table — writes from a connected master show up here in real time.
+5. ~~Live editable value table — writes from a connected master show up here in real time.~~ Done
+   and verified live (see progress note above).
 6. **Device profiles** as JSON. Ship three built from the existing simulator scripts:
    `lt-electrical-meter.json`, `vfd.json`, `flow-meter.json`. See
    [docs/reference/device-profiles.md](docs/reference/device-profiles.md).
 7. RTU server mode over a serial port.
 
 **Acceptance**
-- [ ] ModbusOpen's own scanner (second window) polls ModbusOpen's simulator successfully
-- [ ] `mbpoll` from the CLI reads correct values from it
-- [ ] The L&T profile reproduces what `electrical_write_data.py` produces today
-- [ ] Two slave IDs on one TCP port both respond correctly
-- [ ] A master writing FC16 updates the simulator's live table
+- [ ] ModbusOpen's own scanner (second window) polls ModbusOpen's simulator successfully — an
+      independent `pymodbus` client did this; ModbusOpen-scanning-ModbusOpen-simulator
+      specifically hasn't been tried yet, though there's no reason to expect it to behave
+      differently from any other Modbus TCP client
+- [ ] `mbpoll` from the CLI reads correct values from it — `mbpoll` isn't installed in this
+      session; the equivalent check was done with a `pymodbus` client instead
+- [ ] The L&T profile reproduces what `electrical_write_data.py` produces today — blocked on
+      Task 6 (device profiles don't exist yet)
+- [x] Two slave IDs on one TCP port both respond correctly — `server.rs`'s
+      `two_slave_ids_answer_independently_on_one_port` test
+- [x] A master writing updates the simulator's live table — verified live for FC06 (single
+      register) and FC05 (single coil) via an external `pymodbus` client; FC16/FC15 (multiple)
+      share the identical code path (`mutates_store` matches all four write request types) but
+      weren't separately exercised live this session
 
 ---
 

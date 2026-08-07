@@ -2,15 +2,16 @@
 //! and runs it behind a cancellable `Server` task — the M4 "spike the server API"
 //! risk called out in PLAN.md §6.
 //!
-//! M4 foundation: exercised by this file's own tests, not yet wired to a
-//! `sim_start` command (that's the next M4 slice — commands + UI).
-#![allow(dead_code)]
+//! Every successful write emits `sim-update` with a full snapshot, per the
+//! documented IPC contract (`docs/03-architecture.md#events`) — the UI never
+//! polls for live simulator state.
 
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tauri::{AppHandle, Emitter, Runtime};
 use tokio::net::TcpListener;
 use tokio_modbus::server::tcp::{accept_tcp_connection, Server};
 use tokio_modbus::server::Service;
@@ -18,13 +19,46 @@ use tokio_modbus::{ExceptionCode, Request, Response, SlaveRequest};
 use tokio_util::sync::CancellationToken;
 
 use super::store::ModbusStore;
+use super::types::{SimulatorSnapshot, SlaveSnapshot};
 
-#[derive(Clone)]
-pub struct SimulatorService {
-    store: Arc<ModbusStore>,
+fn mutates_store(req: &Request<'_>) -> bool {
+    matches!(
+        req,
+        Request::WriteSingleCoil(..)
+            | Request::WriteMultipleCoils(..)
+            | Request::WriteSingleRegister(..)
+            | Request::WriteMultipleRegisters(..)
+    )
 }
 
-impl Service for SimulatorService {
+fn build_snapshot(store: &ModbusStore, session_id: u64, tcp_port: u16) -> SimulatorSnapshot {
+    let slaves = store
+        .snapshot()
+        .into_iter()
+        .map(|(unit_id, s)| SlaveSnapshot {
+            unit_id,
+            coils: s.coils,
+            discrete_inputs: s.discrete_inputs,
+            input_registers: s.input_registers,
+            holding_registers: s.holding_registers,
+        })
+        .collect();
+    SimulatorSnapshot {
+        session_id,
+        tcp_port,
+        slaves,
+    }
+}
+
+#[derive(Clone)]
+pub struct SimulatorService<R: Runtime> {
+    store: Arc<ModbusStore>,
+    app: AppHandle<R>,
+    session_id: u64,
+    tcp_port: u16,
+}
+
+impl<R: Runtime> Service for SimulatorService<R> {
     type Request = SlaveRequest<'static>;
     type Response = Response;
     type Exception = ExceptionCode;
@@ -32,7 +66,17 @@ impl Service for SimulatorService {
 
     fn call(&self, req: SlaveRequest<'static>) -> Self::Future {
         let store = self.store.clone();
-        Box::pin(async move { handle_request(&store, req) })
+        let app = self.app.clone();
+        let session_id = self.session_id;
+        let tcp_port = self.tcp_port;
+        let mutates = mutates_store(&req.request);
+        Box::pin(async move {
+            let result = handle_request(&store, req);
+            if mutates && result.is_ok() {
+                let _ = app.emit("sim-update", build_snapshot(&store, session_id, tcp_port));
+            }
+            result
+        })
     }
 }
 
@@ -80,13 +124,23 @@ fn handle_request(
 /// loop; in-flight requests are not aborted mid-frame.
 pub struct SimulatorServer {
     store: Arc<ModbusStore>,
+    session_id: u64,
+    tcp_port: u16,
     cancel: CancellationToken,
     task: tokio::task::JoinHandle<()>,
 }
 
 impl SimulatorServer {
-    pub async fn bind(addr: SocketAddr, store: Arc<ModbusStore>) -> std::io::Result<Self> {
+    /// Binds to `addr` (port `0` picks a free ephemeral port — read it back
+    /// via `tcp_port()`) and starts accepting connections in the background.
+    pub async fn bind<R: Runtime>(
+        addr: SocketAddr,
+        store: Arc<ModbusStore>,
+        app: AppHandle<R>,
+        session_id: u64,
+    ) -> std::io::Result<Self> {
         let listener = TcpListener::bind(addr).await?;
+        let tcp_port = listener.local_addr()?.port();
         let cancel = CancellationToken::new();
         let task_cancel = cancel.clone();
         let service_store = store.clone();
@@ -96,6 +150,9 @@ impl SimulatorServer {
             let new_service = move |_socket_addr: SocketAddr| {
                 Ok(Some(SimulatorService {
                     store: service_store.clone(),
+                    app: app.clone(),
+                    session_id,
+                    tcp_port,
                 }))
             };
             let on_connected = move |stream, socket_addr| {
@@ -109,6 +166,8 @@ impl SimulatorServer {
 
         Ok(Self {
             store,
+            session_id,
+            tcp_port,
             cancel,
             task,
         })
@@ -116,6 +175,18 @@ impl SimulatorServer {
 
     pub fn store(&self) -> Arc<ModbusStore> {
         self.store.clone()
+    }
+
+    pub fn session_id(&self) -> u64 {
+        self.session_id
+    }
+
+    pub fn tcp_port(&self) -> u16 {
+        self.tcp_port
+    }
+
+    pub fn snapshot(&self) -> SimulatorSnapshot {
+        build_snapshot(&self.store, self.session_id, self.tcp_port)
     }
 
     pub async fn shutdown(self) {
@@ -130,22 +201,39 @@ mod tests {
     //! this server — the same "eat your own dog food" pattern as
     //! `client::smoke`, just proving the *server* half instead of the client
     //! half. No external process needed, unlike the `testrig/slave.py` tests.
+    use std::sync::{Arc as StdArc, Mutex as StdMutex};
+
+    use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
+    use tauri::{App, Listener};
+
     use super::*;
     use crate::modbus::client::ModbusClient;
     use crate::modbus::store::SlaveLayout;
     use crate::modbus::types::TcpConfig;
 
-    async fn start_test_server(layouts: &[(u8, SlaveLayout)]) -> (SimulatorServer, u16) {
+    fn test_app() -> App<MockRuntime> {
+        mock_builder()
+            .build(mock_context(noop_assets()))
+            .expect("failed to build mock tauri app")
+    }
+
+    async fn start_test_server(
+        app: &App<MockRuntime>,
+        layouts: &[(u8, SlaveLayout)],
+    ) -> (SimulatorServer, u16) {
         let store = Arc::new(ModbusStore::new());
         store.reset(layouts);
         // Port 0 asks the OS for a free ephemeral port so parallel test runs
         // never collide.
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        let server = SimulatorServer::bind(format!("127.0.0.1:{port}").parse().unwrap(), store)
-            .await
-            .unwrap();
+        let server = SimulatorServer::bind(
+            "127.0.0.1:0".parse().unwrap(),
+            store,
+            app.handle().clone(),
+            1,
+        )
+        .await
+        .unwrap();
+        let port = server.tcp_port();
         (server, port)
     }
 
@@ -173,7 +261,8 @@ mod tests {
 
     #[tokio::test]
     async fn scanner_reads_values_written_directly_into_the_store() {
-        let (server, port) = start_test_server(&[(1, layout(10))]).await;
+        let app = test_app();
+        let (server, port) = start_test_server(&app, &[(1, layout(10))]).await;
         server
             .store()
             .write_multiple_registers(1, 0, &[231, 15, 50])
@@ -197,7 +286,8 @@ mod tests {
 
     #[tokio::test]
     async fn write_from_a_client_updates_the_store() {
-        let (server, port) = start_test_server(&[(1, layout(10))]).await;
+        let app = test_app();
+        let (server, port) = start_test_server(&app, &[(1, layout(10))]).await;
         let mut client = connect(port, 1).await;
 
         client.write_single_register(5, 4242, 1).await.unwrap();
@@ -211,8 +301,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_from_a_client_emits_sim_update() {
+        let app = test_app();
+        let events: StdArc<StdMutex<Vec<String>>> = StdArc::new(StdMutex::new(Vec::new()));
+        let sink = events.clone();
+        app.handle().listen("sim-update", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+
+        let (server, port) = start_test_server(&app, &[(1, layout(10))]).await;
+        let mut client = connect(port, 1).await;
+        client.write_single_register(2, 999, 1).await.unwrap();
+        client.disconnect().await;
+
+        for _ in 0..50 {
+            if !events.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let payload = events.lock().unwrap().last().cloned();
+        let payload = payload.expect("expected a sim-update event after a write");
+        let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(value["slaves"][0]["holdingRegisters"][2], 999);
+
+        server.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn two_slave_ids_answer_independently_on_one_port() {
-        let (server, port) = start_test_server(&[(1, layout(4)), (2, layout(4))]).await;
+        let app = test_app();
+        let (server, port) = start_test_server(&app, &[(1, layout(4)), (2, layout(4))]).await;
         server
             .store()
             .write_multiple_registers(1, 0, &[1, 1, 1, 1])
@@ -253,7 +372,8 @@ mod tests {
 
     #[tokio::test]
     async fn out_of_range_read_surfaces_as_illegal_data_address_to_the_client() {
-        let (server, port) = start_test_server(&[(1, layout(4))]).await;
+        let app = test_app();
+        let (server, port) = start_test_server(&app, &[(1, layout(4))]).await;
         let mut client = connect(port, 1).await;
 
         let err = client

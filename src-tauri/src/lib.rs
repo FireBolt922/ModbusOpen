@@ -5,12 +5,14 @@ mod modbus;
 use std::sync::atomic::AtomicU64;
 
 use modbus::poll::ScannerSession;
+use modbus::server::SimulatorServer;
 use tokio::sync::Mutex;
 
 /// `tokio::sync::Mutex`, not `std::sync::Mutex` — the guard is held across
 /// `.await` when spawning/shutting down a session.
 pub struct AppState {
     pub scanner: Mutex<Option<ScannerSession>>,
+    pub simulator: Mutex<Option<SimulatorServer>>,
     pub next_session_id: AtomicU64,
 }
 
@@ -18,6 +20,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             scanner: Mutex::new(None),
+            simulator: Mutex::new(None),
             next_session_id: AtomicU64::new(1),
         }
     }
@@ -45,6 +48,11 @@ pub fn run() {
             commands::write::write_multiple_coils,
             commands::write::write_multiple_registers,
             commands::write::write_typed,
+            commands::simulator::sim_start,
+            commands::simulator::sim_stop,
+            commands::simulator::sim_snapshot,
+            commands::simulator::sim_write_register,
+            commands::simulator::sim_write_coil,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

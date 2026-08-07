@@ -172,6 +172,38 @@ export type WriteResult = {
   quantity: number;
 };
 
+export type SlaveSimConfig = {
+  unitId: number;
+  coilCount: number;
+  discreteCount: number;
+  inputRegisterCount: number;
+  holdingRegisterCount: number;
+};
+
+export type SimulatorConfig = {
+  tcpPort: number;
+  slaves: SlaveSimConfig[];
+};
+
+export type SimulatorInfo = {
+  sessionId: number;
+  tcpPort: number;
+};
+
+export type SlaveSnapshot = {
+  unitId: number;
+  coils: boolean[];
+  discreteInputs: boolean[];
+  inputRegisters: number[];
+  holdingRegisters: number[];
+};
+
+export type SimulatorSnapshot = {
+  sessionId: number;
+  tcpPort: number;
+  slaves: SlaveSnapshot[];
+};
+
 /** Mirrors src-tauri/src/error.rs::AppError (serde adjacently tagged). */
 export type AppError =
   | { kind: "SerialPortList"; message: string }
