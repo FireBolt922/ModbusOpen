@@ -12,7 +12,7 @@ Think ModScan/ModSim, but modern, free, and pleasant to use.
 
 **Platforms:** Windows, Ubuntu/Linux, macOS (Intel + Apple Silicon)
 **Stack:** Tauri v2 + React/TypeScript UI, Rust core (`tokio-modbus`)
-**Status:** 🟡 Planning complete — implementation starts at M0
+**Status:** 🟢 M0 (Skeleton) implemented — see [PLAN.md](PLAN.md) for the milestone breakdown
 
 ---
 
@@ -29,13 +29,16 @@ Think ModScan/ModSim, but modern, free, and pleasant to use.
 | [docs/06-testing.md](docs/06-testing.md) | How to test without hardware |
 | [docs/reference/](docs/reference/) | Modbus protocol reference — function codes, word order, serial timing |
 | [AGENTS.md](AGENTS.md) | Operating manual for AI agents working in this repo |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | **Run it locally.** Prerequisites, setup, dev/build/test commands, troubleshooting |
 
-## Quick start (once M0 lands)
+## Quick start
 
 ```bash
 npm install
 npm run tauri dev
 ```
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for prerequisites and platform-specific setup.
 
 ## License
 

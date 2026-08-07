@@ -51,7 +51,7 @@ Each milestone is shippable and demoable. Do not start the next one until accept
 
 ---
 
-### M0 — Skeleton  ·  *target: ~half a day*
+### M0 — Skeleton  ·  🟡 *implemented, 2 of 4 acceptance criteria unverified — see note*
 
 Get a window on screen and prove the toolchain works on all three platforms before writing any
 protocol code.
@@ -65,10 +65,23 @@ protocol code.
 6. GitHub Actions: build `.dmg`, `.msi`, `.AppImage`/`.deb` on tag.
 
 **Acceptance**
-- [ ] `npm run tauri dev` opens a window on macOS
-- [ ] Home screen routes to two empty mode screens
-- [ ] Serial port list shows real ports (verify with a USB-serial adapter plugged in)
-- [ ] CI produces artifacts for all three OSes
+- [x] `npm run tauri dev` opens a window on macOS — verified: Rust core compiles clean
+      (`cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` all pass), `tauri dev`
+      launches, WebView child processes spawn, dev server serves the app shell.
+- [x] Home screen routes to two empty mode screens — `/scan` and `/simulate` render placeholder
+      `ScannerSetup`/`SimulatorSetup` screens via React Router.
+- [ ] Serial port list shows real ports — `list_serial_ports` command is wired end to end
+      (Rust `serialport::available_ports()` → `AppError` → `src/lib/ipc.ts` → Home screen panel)
+      and builds clean, but **not yet confirmed against a real USB-serial adapter** — none was
+      attached during this session. Verify on next hardware access.
+- [ ] CI produces artifacts for all three OSes — `.github/workflows/release.yml` and `ci.yml` are
+      written and YAML-valid, but **not yet run** — nothing has been pushed to `origin` yet.
+      Push to `main` and tag `v0.1.0` (or run `ci.yml` via a PR) to confirm.
+
+**Status note:** the two unverified items need a live environment this session didn't have
+(attached USB-serial hardware, and permission to push/tag to the `origin` remote). Everything
+under direct control — build, lint, tests, routing, IPC wiring — is clean. Do the two checks
+above before calling M0 fully done; don't start M1 first.
 
 ---
 
