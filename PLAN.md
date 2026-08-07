@@ -204,7 +204,19 @@ actual write to a read-only register. Leave unchecked.
 
 ---
 
-### M4 — Simulator  ·  *target: ~2.5 days*
+### M4 — Simulator  ·  *target: ~2.5 days*  ·  🚧 started 2026-08-07 — foundation in place
+
+**Progress note (2026-08-07):** the PLAN.md risk table flagged "spike the tokio-modbus server API
+before committing to the M4 plan" — done. `src-tauri/src/modbus/store.rs` (`ModbusStore`,
+multi-slave, bounds-checked reads/writes returning `ExceptionCode`) and
+`src-tauri/src/modbus/server.rs` (`SimulatorService` implementing `tokio_modbus::server::Service`,
+`SimulatorServer` running a cancellable TCP accept loop) exist and are proven end to end: 9 new
+tests spin up a real server on an ephemeral port and read/write it with ModbusOpen's own
+`ModbusClient` — including two slave IDs answering independently on one port and an out-of-range
+read surfacing as exception 02 to the client, exactly like a real device. `cargo test` is 37/37,
+clippy/fmt clean. Not wired to a command or the UI yet — that's the next slice (Task 1's
+`AppState.simulator` + `sim_start`/`sim_stop`), followed by Tasks 2–7 below (setup screen, register
+blocks, tag animation, live table, device profiles, RTU server mode).
 
 **Tasks**
 1. Rust: `tokio-modbus` TCP server with a `ModbusStore` (coils, discretes, input regs, holding regs)

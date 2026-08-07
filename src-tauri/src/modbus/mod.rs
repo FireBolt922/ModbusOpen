@@ -2,5 +2,7 @@ pub mod client;
 pub mod codec;
 pub mod frame;
 pub mod poll;
+pub mod server;
+pub mod store;
 pub mod types;
 pub mod validate;
