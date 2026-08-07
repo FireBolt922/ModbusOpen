@@ -1,12 +1,13 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { DecodedRegister } from "@/lib/types";
+import type { DataFormat, DecodedRegister, TypedValue } from "@/lib/types";
 import {
   formatAddressSpan,
   formatHoldingSpan,
   formatRawHex,
   formatRegisterValue,
 } from "@/lib/format";
+import { errorMessage, writeTyped } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 
 const ROW_HEIGHT = 36;
@@ -14,10 +15,84 @@ const ROW_HEIGHT = 36;
 type Props = {
   rows: DecodedRegister[];
   stale?: boolean;
+  unitId: number;
+  format: DataFormat;
+  /** When true, value cells are double-click editable (holding/input regs). */
+  writable?: boolean;
+  onWriteError?: (msg: string) => void;
+  onWritten?: () => void;
 };
 
-export function RegisterTable({ rows, stale = false }: Props) {
+function valueToEditText(row: DecodedRegister): string {
+  if (row.decodeError) return "";
+  switch (row.value.kind) {
+    case "bool":
+      return row.value.value ? "true" : "false";
+    case "int":
+    case "uint":
+    case "float":
+      return String(row.value.value);
+    case "text":
+      return row.value.value;
+    case "invalid":
+      return "";
+  }
+}
+
+function parseEdit(
+  text: string,
+  format: DataFormat,
+): TypedValue | string {
+  const t = text.trim();
+  if (!t) return "Empty value";
+  switch (format.dataType) {
+    case "bool":
+      if (["1", "true", "on"].includes(t.toLowerCase()))
+        return { kind: "bool", value: true };
+      if (["0", "false", "off"].includes(t.toLowerCase()))
+        return { kind: "bool", value: false };
+      return "true/false";
+    case "int16":
+    case "int32":
+    case "int64": {
+      const n = Number(t);
+      if (!Number.isFinite(n) || !Number.isInteger(n)) return "integer required";
+      return { kind: "int", value: n };
+    }
+    case "uint16":
+    case "uint32":
+    case "uint64":
+    case "hex16":
+    case "binary16": {
+      const n = t.startsWith("0x") ? parseInt(t, 16) : Number(t);
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n))
+        return "non-negative integer";
+      return { kind: "uint", value: n };
+    }
+    case "float32":
+    case "float64": {
+      const n = Number(t);
+      if (!Number.isFinite(n)) return "number required";
+      return { kind: "float", value: n };
+    }
+    case "string":
+      return { kind: "text", value: t };
+  }
+}
+
+export function RegisterTable({
+  rows,
+  stale = false,
+  unitId,
+  format,
+  writable = true,
+  onWriteError,
+  onWritten,
+}: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [editAddr, setEditAddr] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -25,6 +100,24 @@ export function RegisterTable({ rows, stale = false }: Props) {
     estimateSize: () => ROW_HEIGHT,
     overscan: 12,
   });
+
+  async function commitEdit(row: DecodedRegister) {
+    const parsed = parseEdit(editText, format);
+    if (typeof parsed === "string") {
+      onWriteError?.(parsed);
+      return;
+    }
+    setSaving(true);
+    try {
+      await writeTyped(unitId, row.address, parsed, format);
+      setEditAddr(null);
+      onWritten?.();
+    } catch (err) {
+      onWriteError?.(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (rows.length === 0) {
     return (
@@ -40,7 +133,7 @@ export function RegisterTable({ rows, stale = false }: Props) {
         <div>Address</div>
         <div>4x</div>
         <div>Raw (hex)</div>
-        <div>Value</div>
+        <div>Value{writable ? " (dbl-click)" : ""}</div>
       </div>
 
       <div ref={parentRef} className="min-h-0 flex-1 overflow-auto">
@@ -50,6 +143,7 @@ export function RegisterTable({ rows, stale = false }: Props) {
         >
           {virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index];
+            const editing = editAddr === row.address;
             return (
               <div
                 key={row.address}
@@ -72,7 +166,39 @@ export function RegisterTable({ rows, stale = false }: Props) {
                   {formatRawHex(row.raw)}
                 </div>
                 <div className="font-sans font-medium tabular-nums">
-                  {formatRegisterValue(row)}
+                  {editing ? (
+                    <input
+                      className="h-7 w-full rounded border border-ring bg-background px-1 text-sm"
+                      autoFocus
+                      disabled={saving}
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onBlur={() => {
+                        if (!saving) setEditAddr(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void commitEdit(row);
+                        if (e.key === "Escape") setEditAddr(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className={cn(
+                        "w-full text-left",
+                        writable && "hover:underline",
+                      )}
+                      disabled={!writable}
+                      title={writable ? "Double-click to write" : undefined}
+                      onDoubleClick={() => {
+                        if (!writable) return;
+                        setEditAddr(row.address);
+                        setEditText(valueToEditText(row));
+                      }}
+                    >
+                      {formatRegisterValue(row)}
+                    </button>
+                  )}
                 </div>
               </div>
             );

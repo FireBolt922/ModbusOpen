@@ -204,7 +204,7 @@ pub struct DecodedRegister {
     pub decode_error: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind", content = "value")]
 pub enum TypedValue {
     Bool(bool),
@@ -213,6 +213,80 @@ pub enum TypedValue {
     Float(f64),
     Text(String),
     Invalid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    Tx,
+    Rx,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrameAnnotation {
+    pub unit_id: u8,
+    pub function: u8,
+    pub is_exception: bool,
+    pub exception_code: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrameLogEntry {
+    pub session_id: u64,
+    pub timestamp: DateTime<Utc>,
+    pub direction: Direction,
+    pub bytes: Vec<u8>,
+    pub unit_id: u8,
+    pub function: u8,
+    pub is_exception: bool,
+    pub exception_code: Option<u8>,
+    pub rtt_ms: Option<f64>,
+    pub annotation: Option<FrameAnnotation>,
+}
+
+/// A write the UI asks the poll task to perform (serialized on the same
+/// channel as polls so RTU never interleaves two transactions).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum WriteRequest {
+    SingleCoil {
+        unit_id: u8,
+        address: WireAddress,
+        value: bool,
+    },
+    SingleRegister {
+        unit_id: u8,
+        address: WireAddress,
+        value: u16,
+    },
+    MultipleCoils {
+        unit_id: u8,
+        address: WireAddress,
+        values: Vec<bool>,
+    },
+    MultipleRegisters {
+        unit_id: u8,
+        address: WireAddress,
+        values: Vec<u16>,
+    },
+    Typed {
+        unit_id: u8,
+        address: WireAddress,
+        value: TypedValue,
+        format: DataFormat,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteResult {
+    pub session_id: u64,
+    pub latency_ms: f64,
+    pub function: FunctionCode,
+    pub address: WireAddress,
+    pub quantity: u16,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

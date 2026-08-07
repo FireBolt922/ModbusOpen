@@ -9,19 +9,19 @@ use std::time::Duration;
 use tokio::time::{sleep, timeout};
 use tokio_modbus::client::rtu;
 use tokio_modbus::client::tcp;
-use tokio_modbus::client::{Context, Reader};
+use tokio_modbus::client::{Context, Reader, Writer};
 use tokio_modbus::slave::{Slave, SlaveContext};
 use tokio_modbus::ExceptionCode;
 use tokio_serial::{DataBits, FlowControl, Parity as SerialParity, SerialPortBuilderExt, StopBits};
 
-use super::types::{FunctionCode, Parity, RtuConfig, TcpConfig, WireAddress};
+use super::types::{FunctionCode, Parity, RtuConfig, TcpConfig, Transport, WireAddress};
 use crate::error::{
     exception_name_and_hint, humanize_serial_error, map_serial_open_error, AppError,
 };
 
-/// Outcome of a single read. Distinguishes "device answered with an error"
-/// (not fatal — keep polling) from "the transport is dead" (fatal — the poll
-/// task must stop).
+/// Outcome of a single read/write. Distinguishes "device answered with an
+/// error" (not fatal — keep polling) from "the transport is dead" (fatal —
+/// stop the task).
 #[derive(Debug)]
 pub enum ReadError {
     Exception {
@@ -86,6 +86,7 @@ pub struct ModbusClient {
     /// Silence before the next frame (RTU). Zero for TCP.
     inter_frame_delay: Duration,
     first_frame: bool,
+    pub transport: Transport,
 }
 
 impl ModbusClient {
@@ -127,6 +128,7 @@ impl ModbusClient {
             timeout: connect_timeout,
             inter_frame_delay: Duration::ZERO,
             first_frame: true,
+            transport: Transport::Tcp,
         })
     }
 
@@ -156,6 +158,7 @@ impl ModbusClient {
             timeout: Duration::from_millis(config.timeout_ms),
             inter_frame_delay: Duration::from_micros(u64::from(delay_us)),
             first_frame: true,
+            transport: Transport::Rtu,
         })
     }
 
@@ -174,9 +177,29 @@ impl ModbusClient {
         sleep(self.inter_frame_delay).await;
     }
 
-    /// Reads `quantity` registers of the given function starting at `start`,
-    /// against `unit_id` (applied before the call, so unit ID changes take
-    /// effect with no reconnect).
+    fn map_modbus_result<T>(
+        result: Result<Result<T, ExceptionCode>, tokio_modbus::Error>,
+        function: FunctionCode,
+        start: WireAddress,
+        unit_id: u8,
+    ) -> Result<T, ReadError> {
+        match result {
+            Err(tokio_modbus::Error::Transport(e)) => {
+                Err(ReadError::Transport(humanize_serial_error(&e.to_string())))
+            }
+            Err(tokio_modbus::Error::Protocol(e)) => {
+                Err(ReadError::Transport(humanize_serial_error(&e.to_string())))
+            }
+            Ok(Err(exception)) => {
+                let code = exception_code_to_u8(exception);
+                let (name, hint) = exception_name_and_hint(code, function as u8, start, unit_id);
+                Err(ReadError::Exception { code, name, hint })
+            }
+            Ok(Ok(values)) => Ok(values),
+        }
+    }
+
+    /// Reads holding/input registers (FC03/FC04).
     pub async fn read_registers(
         &mut self,
         function: FunctionCode,
@@ -196,25 +219,115 @@ impl ModbusClient {
                     self.ctx.read_input_registers(start, quantity).await
                 }
                 _ => Err(tokio_modbus::Error::Transport(std::io::Error::other(
-                    "unsupported read function",
+                    "not a register-read function",
                 ))),
             }
         };
 
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
-            Ok(Err(tokio_modbus::Error::Transport(e))) => {
-                Err(ReadError::Transport(humanize_serial_error(&e.to_string())))
+            Ok(result) => Self::map_modbus_result(result, function, start, unit_id),
+        }
+    }
+
+    /// Reads coils / discrete inputs (FC01/FC02). Bits packed LSB-first in
+    /// the response — already unpacked by tokio-modbus into `Vec<bool>`.
+    pub async fn read_bits(
+        &mut self,
+        function: FunctionCode,
+        start: WireAddress,
+        quantity: u16,
+        unit_id: u8,
+    ) -> Result<Vec<bool>, ReadError> {
+        self.set_unit_id(unit_id);
+        self.maybe_inter_frame_delay().await;
+
+        let call = async {
+            match function {
+                FunctionCode::ReadCoils => self.ctx.read_coils(start, quantity).await,
+                FunctionCode::ReadDiscreteInputs => {
+                    self.ctx.read_discrete_inputs(start, quantity).await
+                }
+                _ => Err(tokio_modbus::Error::Transport(std::io::Error::other(
+                    "not a bit-read function",
+                ))),
             }
-            Ok(Err(tokio_modbus::Error::Protocol(e))) => {
-                Err(ReadError::Transport(humanize_serial_error(&e.to_string())))
+        };
+
+        match timeout(self.timeout, call).await {
+            Err(_) => Err(ReadError::Timeout),
+            Ok(result) => Self::map_modbus_result(result, function, start, unit_id),
+        }
+    }
+
+    pub async fn write_single_coil(
+        &mut self,
+        address: WireAddress,
+        value: bool,
+        unit_id: u8,
+    ) -> Result<(), ReadError> {
+        self.set_unit_id(unit_id);
+        self.maybe_inter_frame_delay().await;
+        let call = self.ctx.write_single_coil(address, value);
+        match timeout(self.timeout, call).await {
+            Err(_) => Err(ReadError::Timeout),
+            Ok(result) => {
+                Self::map_modbus_result(result, FunctionCode::WriteSingleCoil, address, unit_id)
             }
-            Ok(Ok(Err(exception))) => {
-                let code = exception_code_to_u8(exception);
-                let (name, hint) = exception_name_and_hint(code, function as u8, start, unit_id);
-                Err(ReadError::Exception { code, name, hint })
+        }
+    }
+
+    pub async fn write_single_register(
+        &mut self,
+        address: WireAddress,
+        value: u16,
+        unit_id: u8,
+    ) -> Result<(), ReadError> {
+        self.set_unit_id(unit_id);
+        self.maybe_inter_frame_delay().await;
+        let call = self.ctx.write_single_register(address, value);
+        match timeout(self.timeout, call).await {
+            Err(_) => Err(ReadError::Timeout),
+            Ok(result) => {
+                Self::map_modbus_result(result, FunctionCode::WriteSingleRegister, address, unit_id)
             }
-            Ok(Ok(Ok(values))) => Ok(values),
+        }
+    }
+
+    pub async fn write_multiple_coils(
+        &mut self,
+        address: WireAddress,
+        values: &[bool],
+        unit_id: u8,
+    ) -> Result<(), ReadError> {
+        self.set_unit_id(unit_id);
+        self.maybe_inter_frame_delay().await;
+        let call = self.ctx.write_multiple_coils(address, values);
+        match timeout(self.timeout, call).await {
+            Err(_) => Err(ReadError::Timeout),
+            Ok(result) => {
+                Self::map_modbus_result(result, FunctionCode::WriteMultipleCoils, address, unit_id)
+            }
+        }
+    }
+
+    pub async fn write_multiple_registers(
+        &mut self,
+        address: WireAddress,
+        values: &[u16],
+        unit_id: u8,
+    ) -> Result<(), ReadError> {
+        self.set_unit_id(unit_id);
+        self.maybe_inter_frame_delay().await;
+        let call = self.ctx.write_multiple_registers(address, values);
+        match timeout(self.timeout, call).await {
+            Err(_) => Err(ReadError::Timeout),
+            Ok(result) => Self::map_modbus_result(
+                result,
+                FunctionCode::WriteMultipleRegisters,
+                address,
+                unit_id,
+            ),
         }
     }
 

@@ -8,12 +8,16 @@ import type {
   ConnectionInfo,
   ConnectionLostEvent,
   ConnectionStatus,
+  DataFormat,
+  FrameLogEntry,
   PollConfig,
   PollErrorEvent,
   PollResult,
   RtuConfig,
   SerialPortInfo,
   TcpConfig,
+  TypedValue,
+  WriteResult,
 } from "./types";
 
 export type { AppError };
@@ -107,4 +111,68 @@ export function onConnectionLost(
   cb: (event: ConnectionLostEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<ConnectionLostEvent>("connection-lost", (e) => cb(e.payload));
+}
+
+export function onFrame(
+  cb: (entry: FrameLogEntry) => void,
+): Promise<UnlistenFn> {
+  return listen<FrameLogEntry>("frame", (e) => cb(e.payload));
+}
+
+export async function writeSingleCoil(
+  unitId: number,
+  address: number,
+  value: boolean,
+): Promise<WriteResult> {
+  return invoke<WriteResult>("write_single_coil", { unitId, address, value });
+}
+
+export async function writeSingleRegister(
+  unitId: number,
+  address: number,
+  value: number,
+): Promise<WriteResult> {
+  return invoke<WriteResult>("write_single_register", {
+    unitId,
+    address,
+    value,
+  });
+}
+
+export async function writeMultipleCoils(
+  unitId: number,
+  address: number,
+  values: boolean[],
+): Promise<WriteResult> {
+  return invoke<WriteResult>("write_multiple_coils", {
+    unitId,
+    address,
+    values,
+  });
+}
+
+export async function writeMultipleRegisters(
+  unitId: number,
+  address: number,
+  values: number[],
+): Promise<WriteResult> {
+  return invoke<WriteResult>("write_multiple_registers", {
+    unitId,
+    address,
+    values,
+  });
+}
+
+export async function writeTyped(
+  unitId: number,
+  address: number,
+  value: TypedValue,
+  format: DataFormat,
+): Promise<WriteResult> {
+  return invoke<WriteResult>("write_typed", {
+    unitId,
+    address,
+    value,
+    format,
+  });
 }

@@ -264,8 +264,6 @@ pub fn decode_block(
 
 /// Encode a value the user typed in back into wire registers, ready for
 /// FC06/FC16. Inverts `apply_scale_offset` before encoding.
-/// Used by tests now (round-trip property) and by `write_typed` in M3.
-#[allow(dead_code)]
 pub fn encode(value: &TypedValue, format: &DataFormat) -> Result<Vec<u16>, String> {
     match (format.data_type, value) {
         (DataType::Bool, TypedValue::Bool(b)) => Ok(vec![if *b { 1 } else { 0 }]),

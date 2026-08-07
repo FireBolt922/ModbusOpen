@@ -142,6 +142,36 @@ export type ConnectionLostEvent = {
   message: string;
 };
 
+export type Direction = "tx" | "rx";
+
+export type FrameAnnotation = {
+  unitId: number;
+  function: number;
+  isException: boolean;
+  exceptionCode: number | null;
+};
+
+export type FrameLogEntry = {
+  sessionId: number;
+  timestamp: string;
+  direction: Direction;
+  bytes: number[];
+  unitId: number;
+  function: number;
+  isException: boolean;
+  exceptionCode: number | null;
+  rttMs: number | null;
+  annotation: FrameAnnotation | null;
+};
+
+export type WriteResult = {
+  sessionId: number;
+  latencyMs: number;
+  function: FunctionCode;
+  address: number;
+  quantity: number;
+};
+
 /** Mirrors src-tauri/src/error.rs::AppError (serde adjacently tagged). */
 export type AppError =
   | { kind: "SerialPortList"; message: string }

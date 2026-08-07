@@ -2,6 +2,7 @@ import type { DataFormat, DataType, WordOrder } from "@/lib/types";
 import { Label } from "@/components/ui/label";
 
 const DATA_TYPES: { value: DataType; label: string }[] = [
+  { value: "bool", label: "bool" },
   { value: "uint16", label: "uint16" },
   { value: "int16", label: "int16" },
   { value: "hex16", label: "hex16" },
@@ -12,6 +13,7 @@ const DATA_TYPES: { value: DataType; label: string }[] = [
   { value: "uint64", label: "uint64" },
   { value: "int64", label: "int64" },
   { value: "float64", label: "float64" },
+  { value: "string", label: "string" },
 ];
 
 const WORD_ORDERS: { value: WordOrder; label: string }[] = [

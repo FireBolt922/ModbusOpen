@@ -1,8 +1,7 @@
 //! The poll engine. One Tokio task per connected session, owning the
 //! `ModbusClient` exclusively — nothing else touches the socket. Retuning
-//! (unit ID, address, quantity, interval) goes through a channel and is
-//! applied at the top of the next cycle, so it never requires a reconnect.
-//! See `docs/03-architecture.md#threading-model`.
+//! and writes go through a channel and are applied at the top of the next
+//! cycle. See `docs/03-architecture.md#threading-model`.
 
 use std::time::Instant;
 
@@ -13,9 +12,16 @@ use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
 use super::client::{ModbusClient, ReadError};
-use super::codec::decode_block;
+use super::codec::{decode_block, encode};
+use super::frame::{
+    fc_byte, make_frame, pdu_exception, pdu_read_bits_response, pdu_read_registers_response,
+    pdu_read_request, pdu_write_multiple_coils, pdu_write_multiple_echo,
+    pdu_write_multiple_registers, pdu_write_single_coil, pdu_write_single_echo,
+    pdu_write_single_register,
+};
 use super::types::{
-    ConnectionLostEvent, PollConfig, PollErrorEvent, PollResult, PollStats, Transport,
+    ConnectionLostEvent, DecodedRegister, Direction, FunctionCode, PollConfig, PollErrorEvent,
+    PollResult, PollStats, Transport, TypedValue, WriteRequest, WriteResult,
 };
 use crate::error::AppError;
 
@@ -24,6 +30,7 @@ pub enum PollCommand {
     Start,
     Stop,
     ReadOnce(PollConfig, oneshot::Sender<Result<PollResult, AppError>>),
+    Write(WriteRequest, oneshot::Sender<Result<WriteResult, AppError>>),
 }
 
 struct StatsAccumulator {
@@ -145,9 +152,6 @@ impl ScannerSession {
             })
     }
 
-    /// Cancels the poll task and waits for it to actually finish before
-    /// returning — otherwise a zombie task keeps holding the socket and the
-    /// next connect can fail with a spurious "port busy".
     pub async fn shutdown(self) {
         self.cancel.cancel();
         let _ = self.task.await;
@@ -167,6 +171,7 @@ async fn run_poll_loop(
     let mut stats = StatsAccumulator::new();
     let mut ticker = interval(Duration::from_millis(1000));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let transport = client.transport;
 
     loop {
         tokio::select! {
@@ -186,7 +191,28 @@ async fn run_poll_loop(
                     Some(PollCommand::Start) => running = true,
                     Some(PollCommand::Stop) => running = false,
                     Some(PollCommand::ReadOnce(cfg, responder)) => {
-                        let result = read_cycle(&mut client, &cfg, session_id, &mut sequence, &mut stats).await;
+                        let result = read_cycle(
+                            &app, &mut client, &cfg, session_id, transport,
+                            &mut sequence, &mut stats,
+                        ).await;
+                        let fatal = matches!(&result, Err(ReadOutcome::Fatal(_)));
+                        let _ = responder.send(result.map_err(|e| e.into_app_error()));
+                        if fatal {
+                            let _ = app.emit(
+                                "connection-lost",
+                                &ConnectionLostEvent {
+                                    session_id,
+                                    message: "Connection lost — transport closed".to_string(),
+                                },
+                            );
+                            break;
+                        }
+                    }
+                    Some(PollCommand::Write(req, responder)) => {
+                        let result = write_cycle(
+                            &app, &mut client, req, session_id, transport,
+                            &mut sequence, &mut stats,
+                        ).await;
                         let fatal = matches!(&result, Err(ReadOutcome::Fatal(_)));
                         let _ = responder.send(result.map_err(|e| e.into_app_error()));
                         if fatal {
@@ -206,7 +232,10 @@ async fn run_poll_loop(
 
             _ = ticker.tick(), if running && config.is_some() => {
                 let cfg = config.clone().expect("checked by select guard");
-                match read_cycle(&mut client, &cfg, session_id, &mut sequence, &mut stats).await {
+                match read_cycle(
+                    &app, &mut client, &cfg, session_id, transport,
+                    &mut sequence, &mut stats,
+                ).await {
                     Ok(result) => {
                         let _ = app.emit("poll-result", &result);
                     }
@@ -251,54 +280,513 @@ impl ReadOutcome {
     }
 }
 
-async fn read_cycle(
-    client: &mut ModbusClient,
-    cfg: &PollConfig,
-    session_id: u64,
-    sequence: &mut u64,
+fn map_read_error(
+    err: ReadError,
+    unit_id: u8,
+    timeout_ms: u64,
     stats: &mut StatsAccumulator,
-) -> Result<PollResult, ReadOutcome> {
-    let started = Instant::now();
-    match client
-        .read_registers(cfg.function, cfg.start_address, cfg.quantity, cfg.unit_id)
-        .await
-    {
-        Ok(regs) => {
-            let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
-            let snapshot = stats.record_success(latency_ms);
-            *sequence += 1;
-            let registers = decode_block(&regs, cfg.start_address, &cfg.format);
-            Ok(PollResult {
-                session_id,
-                sequence: *sequence,
-                timestamp: Utc::now(),
-                latency_ms,
-                registers,
-                stats: snapshot,
-            })
-        }
-        Err(ReadError::Exception { code, name, hint }) => {
+) -> ReadOutcome {
+    match err {
+        ReadError::Exception { code, name, hint } => {
             let err = AppError::ModbusException {
                 code,
                 name: name.clone(),
                 hint: hint.clone(),
             };
             stats.record_failure(err.to_string(), false);
-            Err(ReadOutcome::Recoverable(err))
+            ReadOutcome::Recoverable(err)
         }
-        Err(ReadError::Timeout) => {
+        ReadError::Timeout => {
             let err = AppError::Timeout {
-                unit_id: cfg.unit_id,
-                timeout_ms: cfg.interval_ms,
+                unit_id,
+                timeout_ms,
                 attempts: 1,
             };
             stats.record_failure(err.to_string(), true);
-            Err(ReadOutcome::Recoverable(err))
+            ReadOutcome::Recoverable(err)
         }
-        Err(ReadError::Transport(reason)) => {
+        ReadError::Transport(reason) => {
             let err = AppError::ConnectionLost { reason };
             stats.record_failure(err.to_string(), false);
-            Err(ReadOutcome::Fatal(err))
+            ReadOutcome::Fatal(err)
         }
     }
+}
+
+fn decode_bits(bits: &[bool], start: u16) -> Vec<DecodedRegister> {
+    bits.iter()
+        .enumerate()
+        .map(|(i, &b)| DecodedRegister {
+            address: start.wrapping_add(i as u16),
+            span: 1,
+            raw: vec![if b { 1 } else { 0 }],
+            value: TypedValue::Bool(b),
+            decode_error: None,
+        })
+        .collect()
+}
+
+fn is_bit_function(fc: FunctionCode) -> bool {
+    matches!(
+        fc,
+        FunctionCode::ReadCoils | FunctionCode::ReadDiscreteInputs
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_tx_rx(
+    app: &AppHandle,
+    session_id: u64,
+    transport: Transport,
+    tid: u16,
+    unit_id: u8,
+    tx_pdu: &[u8],
+    rx_pdu: &[u8],
+    latency_ms: f64,
+    is_exception: bool,
+    exception_code: Option<u8>,
+) {
+    let _ = app.emit(
+        "frame",
+        &make_frame(
+            session_id,
+            transport,
+            tid,
+            unit_id,
+            Direction::Tx,
+            tx_pdu,
+            None,
+            false,
+            None,
+        ),
+    );
+    let _ = app.emit(
+        "frame",
+        &make_frame(
+            session_id,
+            transport,
+            tid,
+            unit_id,
+            Direction::Rx,
+            rx_pdu,
+            Some(latency_ms),
+            is_exception,
+            exception_code,
+        ),
+    );
+}
+
+async fn read_cycle(
+    app: &AppHandle,
+    client: &mut ModbusClient,
+    cfg: &PollConfig,
+    session_id: u64,
+    transport: Transport,
+    sequence: &mut u64,
+    stats: &mut StatsAccumulator,
+) -> Result<PollResult, ReadOutcome> {
+    let fc = fc_byte(cfg.function);
+    let tx_pdu = pdu_read_request(fc, cfg.start_address, cfg.quantity);
+    let started = Instant::now();
+
+    if is_bit_function(cfg.function) {
+        match client
+            .read_bits(cfg.function, cfg.start_address, cfg.quantity, cfg.unit_id)
+            .await
+        {
+            Ok(bits) => {
+                let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+                let snapshot = stats.record_success(latency_ms);
+                *sequence += 1;
+                let rx_pdu = pdu_read_bits_response(fc, &bits);
+                emit_tx_rx(
+                    app,
+                    session_id,
+                    transport,
+                    *sequence as u16,
+                    cfg.unit_id,
+                    &tx_pdu,
+                    &rx_pdu,
+                    latency_ms,
+                    false,
+                    None,
+                );
+                Ok(PollResult {
+                    session_id,
+                    sequence: *sequence,
+                    timestamp: Utc::now(),
+                    latency_ms,
+                    registers: decode_bits(&bits, cfg.start_address),
+                    stats: snapshot,
+                })
+            }
+            Err(e) => {
+                if let ReadError::Exception { code, .. } = &e {
+                    emit_tx_rx(
+                        app,
+                        session_id,
+                        transport,
+                        (*sequence + 1) as u16,
+                        cfg.unit_id,
+                        &tx_pdu,
+                        &pdu_exception(fc, *code),
+                        started.elapsed().as_secs_f64() * 1000.0,
+                        true,
+                        Some(*code),
+                    );
+                }
+                Err(map_read_error(e, cfg.unit_id, cfg.interval_ms, stats))
+            }
+        }
+    } else {
+        match client
+            .read_registers(cfg.function, cfg.start_address, cfg.quantity, cfg.unit_id)
+            .await
+        {
+            Ok(regs) => {
+                let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+                let snapshot = stats.record_success(latency_ms);
+                *sequence += 1;
+                let rx_pdu = pdu_read_registers_response(fc, &regs);
+                emit_tx_rx(
+                    app,
+                    session_id,
+                    transport,
+                    *sequence as u16,
+                    cfg.unit_id,
+                    &tx_pdu,
+                    &rx_pdu,
+                    latency_ms,
+                    false,
+                    None,
+                );
+                let registers = decode_block(&regs, cfg.start_address, &cfg.format);
+                Ok(PollResult {
+                    session_id,
+                    sequence: *sequence,
+                    timestamp: Utc::now(),
+                    latency_ms,
+                    registers,
+                    stats: snapshot,
+                })
+            }
+            Err(e) => {
+                if let ReadError::Exception { code, .. } = &e {
+                    emit_tx_rx(
+                        app,
+                        session_id,
+                        transport,
+                        (*sequence + 1) as u16,
+                        cfg.unit_id,
+                        &tx_pdu,
+                        &pdu_exception(fc, *code),
+                        started.elapsed().as_secs_f64() * 1000.0,
+                        true,
+                        Some(*code),
+                    );
+                }
+                Err(map_read_error(e, cfg.unit_id, cfg.interval_ms, stats))
+            }
+        }
+    }
+}
+
+async fn write_cycle(
+    app: &AppHandle,
+    client: &mut ModbusClient,
+    req: WriteRequest,
+    session_id: u64,
+    transport: Transport,
+    sequence: &mut u64,
+    stats: &mut StatsAccumulator,
+) -> Result<WriteResult, ReadOutcome> {
+    match req {
+        WriteRequest::SingleCoil {
+            unit_id,
+            address,
+            value,
+        } => {
+            write_single_coil_inner(
+                app, client, unit_id, address, value, session_id, transport, sequence, stats,
+            )
+            .await
+        }
+        WriteRequest::SingleRegister {
+            unit_id,
+            address,
+            value,
+        } => {
+            write_single_register_inner(
+                app, client, unit_id, address, value, session_id, transport, sequence, stats,
+            )
+            .await
+        }
+        WriteRequest::MultipleCoils {
+            unit_id,
+            address,
+            values,
+        } => {
+            write_multiple_coils_inner(
+                app, client, unit_id, address, values, session_id, transport, sequence, stats,
+            )
+            .await
+        }
+        WriteRequest::MultipleRegisters {
+            unit_id,
+            address,
+            values,
+        } => {
+            write_multiple_registers_inner(
+                app, client, unit_id, address, values, session_id, transport, sequence, stats,
+            )
+            .await
+        }
+        WriteRequest::Typed {
+            unit_id,
+            address,
+            value,
+            format,
+        } => {
+            let regs = encode(&value, &format)
+                .map_err(|msg| ReadOutcome::Recoverable(AppError::InvalidConfig(msg)))?;
+            if regs.len() == 1 {
+                write_single_register_inner(
+                    app, client, unit_id, address, regs[0], session_id, transport, sequence, stats,
+                )
+                .await
+            } else {
+                write_multiple_registers_inner(
+                    app, client, unit_id, address, regs, session_id, transport, sequence, stats,
+                )
+                .await
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn write_single_coil_inner(
+    app: &AppHandle,
+    client: &mut ModbusClient,
+    unit_id: u8,
+    address: u16,
+    value: bool,
+    session_id: u64,
+    transport: Transport,
+    sequence: &mut u64,
+    stats: &mut StatsAccumulator,
+) -> Result<WriteResult, ReadOutcome> {
+    let tx_pdu = pdu_write_single_coil(address, value);
+    let started = Instant::now();
+    match client.write_single_coil(address, value, unit_id).await {
+        Ok(()) => {
+            let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+            stats.record_success(latency_ms);
+            *sequence += 1;
+            let (vh, vl) = if value { (0xFF, 0x00) } else { (0x00, 0x00) };
+            let rx_pdu = pdu_write_single_echo(0x05, address, vh, vl);
+            emit_tx_rx(
+                app,
+                session_id,
+                transport,
+                *sequence as u16,
+                unit_id,
+                &tx_pdu,
+                &rx_pdu,
+                latency_ms,
+                false,
+                None,
+            );
+            Ok(WriteResult {
+                session_id,
+                latency_ms,
+                function: FunctionCode::WriteSingleCoil,
+                address,
+                quantity: 1,
+            })
+        }
+        Err(e) => write_err(
+            app, e, 0x05, unit_id, address, &tx_pdu, session_id, transport, sequence, stats,
+            started,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn write_single_register_inner(
+    app: &AppHandle,
+    client: &mut ModbusClient,
+    unit_id: u8,
+    address: u16,
+    value: u16,
+    session_id: u64,
+    transport: Transport,
+    sequence: &mut u64,
+    stats: &mut StatsAccumulator,
+) -> Result<WriteResult, ReadOutcome> {
+    let tx_pdu = pdu_write_single_register(address, value);
+    let started = Instant::now();
+    match client.write_single_register(address, value, unit_id).await {
+        Ok(()) => {
+            let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+            stats.record_success(latency_ms);
+            *sequence += 1;
+            let rx_pdu = pdu_write_single_echo(0x06, address, (value >> 8) as u8, value as u8);
+            emit_tx_rx(
+                app,
+                session_id,
+                transport,
+                *sequence as u16,
+                unit_id,
+                &tx_pdu,
+                &rx_pdu,
+                latency_ms,
+                false,
+                None,
+            );
+            Ok(WriteResult {
+                session_id,
+                latency_ms,
+                function: FunctionCode::WriteSingleRegister,
+                address,
+                quantity: 1,
+            })
+        }
+        Err(e) => write_err(
+            app, e, 0x06, unit_id, address, &tx_pdu, session_id, transport, sequence, stats,
+            started,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn write_multiple_coils_inner(
+    app: &AppHandle,
+    client: &mut ModbusClient,
+    unit_id: u8,
+    address: u16,
+    values: Vec<bool>,
+    session_id: u64,
+    transport: Transport,
+    sequence: &mut u64,
+    stats: &mut StatsAccumulator,
+) -> Result<WriteResult, ReadOutcome> {
+    let qty = values.len() as u16;
+    let tx_pdu = pdu_write_multiple_coils(address, &values);
+    let started = Instant::now();
+    match client.write_multiple_coils(address, &values, unit_id).await {
+        Ok(()) => {
+            let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+            stats.record_success(latency_ms);
+            *sequence += 1;
+            let rx_pdu = pdu_write_multiple_echo(0x0F, address, qty);
+            emit_tx_rx(
+                app,
+                session_id,
+                transport,
+                *sequence as u16,
+                unit_id,
+                &tx_pdu,
+                &rx_pdu,
+                latency_ms,
+                false,
+                None,
+            );
+            Ok(WriteResult {
+                session_id,
+                latency_ms,
+                function: FunctionCode::WriteMultipleCoils,
+                address,
+                quantity: qty,
+            })
+        }
+        Err(e) => write_err(
+            app, e, 0x0F, unit_id, address, &tx_pdu, session_id, transport, sequence, stats,
+            started,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn write_multiple_registers_inner(
+    app: &AppHandle,
+    client: &mut ModbusClient,
+    unit_id: u8,
+    address: u16,
+    values: Vec<u16>,
+    session_id: u64,
+    transport: Transport,
+    sequence: &mut u64,
+    stats: &mut StatsAccumulator,
+) -> Result<WriteResult, ReadOutcome> {
+    let qty = values.len() as u16;
+    let tx_pdu = pdu_write_multiple_registers(address, &values);
+    let started = Instant::now();
+    match client
+        .write_multiple_registers(address, &values, unit_id)
+        .await
+    {
+        Ok(()) => {
+            let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+            stats.record_success(latency_ms);
+            *sequence += 1;
+            let rx_pdu = pdu_write_multiple_echo(0x10, address, qty);
+            emit_tx_rx(
+                app,
+                session_id,
+                transport,
+                *sequence as u16,
+                unit_id,
+                &tx_pdu,
+                &rx_pdu,
+                latency_ms,
+                false,
+                None,
+            );
+            Ok(WriteResult {
+                session_id,
+                latency_ms,
+                function: FunctionCode::WriteMultipleRegisters,
+                address,
+                quantity: qty,
+            })
+        }
+        Err(e) => write_err(
+            app, e, 0x10, unit_id, address, &tx_pdu, session_id, transport, sequence, stats,
+            started,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_err(
+    app: &AppHandle,
+    e: ReadError,
+    fc: u8,
+    unit_id: u8,
+    address: u16,
+    tx_pdu: &[u8],
+    session_id: u64,
+    transport: Transport,
+    sequence: &mut u64,
+    stats: &mut StatsAccumulator,
+    started: Instant,
+) -> Result<WriteResult, ReadOutcome> {
+    let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+    if let ReadError::Exception { code, .. } = &e {
+        emit_tx_rx(
+            app,
+            session_id,
+            transport,
+            (*sequence + 1) as u16,
+            unit_id,
+            tx_pdu,
+            &pdu_exception(fc, *code),
+            latency_ms,
+            true,
+            Some(*code),
+        );
+    }
+    let _ = address;
+    Err(map_read_error(e, unit_id, 1000, stats))
 }

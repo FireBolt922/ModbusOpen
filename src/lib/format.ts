@@ -70,3 +70,37 @@ export function formatRate(hz: number): string {
   if (!Number.isFinite(hz) || hz <= 0) return "—";
   return `${hz.toFixed(2)} Hz`;
 }
+
+/** Bytes as space-separated uppercase hex. */
+export function formatBytesHex(bytes: number[]): string {
+  return bytes
+    .map((b) => (b & 0xff).toString(16).padStart(2, "0"))
+    .join(" ")
+    .toUpperCase();
+}
+
+export function functionCodeLabel(fc: number): string {
+  const map: Record<number, string> = {
+    0x01: "01 Read Coils",
+    0x02: "02 Read Discrete",
+    0x03: "03 Read Holding",
+    0x04: "04 Read Input",
+    0x05: "05 Write Coil",
+    0x06: "06 Write Register",
+    0x0f: "15 Write Coils",
+    0x10: "16 Write Registers",
+  };
+  return map[fc] ?? `FC ${fc.toString(16).padStart(2, "0")}`;
+}
+
+/** Build a CSV snapshot of the current table. */
+export function tableToCsv(rows: DecodedRegister[]): string {
+  const header = "address,holding,raw_hex,value,decode_error";
+  const lines = rows.map((r) => {
+    const raw = formatRawHex(r.raw).replace(/,/g, " ");
+    const value = formatRegisterValue(r).replace(/"/g, '""');
+    const err = (r.decodeError ?? "").replace(/"/g, '""');
+    return `${r.address},${formatHoldingSpan(r.address, r.span)},"${raw}","${value}","${err}"`;
+  });
+  return [header, ...lines].join("\n");
+}

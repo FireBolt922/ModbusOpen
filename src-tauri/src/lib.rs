@@ -40,6 +40,11 @@ pub fn run() {
             commands::poll::start_poll,
             commands::poll::stop_poll,
             commands::poll::read_once,
+            commands::write::write_single_coil,
+            commands::write::write_single_register,
+            commands::write::write_multiple_coils,
+            commands::write::write_multiple_registers,
+            commands::write::write_typed,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
