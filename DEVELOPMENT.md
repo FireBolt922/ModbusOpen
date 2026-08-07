@@ -136,21 +136,27 @@ never a `.deb` or `.AppImage`. See §4b below for how to get a Linux binary to s
 needs either CI or an actual Linux machine/container — cross-compiling Tauri's Linux target from
 macOS isn't practically supported (it needs `webkit2gtk`/`glibc` headers that don't exist on macOS).
 
-### 4a. Recommended: let CI build all three platforms
+### 4a. Recommended: let CI build it — manual, pick your platform(s)
 
-`.github/workflows/release.yml` already builds macOS (both Apple Silicon and Intel), Windows, and
-Ubuntu on every `v*` tag, and attaches the installers to a draft GitHub release — this is the
-easiest way to get a shareable Ubuntu binary without touching a Linux machine yourself:
+`.github/workflows/release.yml` builds macOS (both Apple Silicon and Intel), Windows, and/or
+Ubuntu and attaches the installers to a draft GitHub release. It only runs when you trigger it —
+nothing builds automatically on push or tag:
+
+1. GitHub → **Actions** tab → **release** workflow → **Run workflow**.
+2. Pick the branch/tag to build *from* (the "Use workflow from" dropdown).
+3. Fill in **tag** — the release tag to publish under, e.g. `v0.1.1` (doesn't need to exist yet;
+   the release step creates it).
+4. Pick **platform** — `all`, `macos`, `windows`, or `ubuntu`, depending on what you actually need
+   right now (a solo Ubuntu run is much faster than waiting on all four jobs).
+5. **Run workflow**. When the job(s) finish, download the `.AppImage`/`.deb` (or `.dmg`/`.msi`)
+   from the draft release's assets.
+
+Same thing from the CLI, if you'd rather not use the web UI (needs `gh` authenticated with
+`repo` scope — this session doesn't have that, so run it from your own machine):
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+gh workflow run release.yml -f tag=v0.1.1 -f platform=ubuntu
 ```
-
-Then watch the **Actions** tab on GitHub; when the `ubuntu-22.04` job finishes, download the
-`.AppImage`/`.deb` from the draft release's assets. Requires a GitHub remote with Actions enabled
-on the repo (needs `push` access — this session doesn't have a `gh` CLI or token, so trigger and
-check this from your own machine or the GitHub web UI).
 
 ### 4b. Building the Ubuntu binary yourself
 
@@ -250,7 +256,7 @@ src-tauri/
   tauri.conf.json           App identifier, window config, bundle targets
 .github/workflows/
   ci.yml                    fmt/clippy/test/build on every push+PR to main
-  release.yml                cross-platform installer build on `v*` tags
+  release.yml                cross-platform installer build — manual dispatch only, pick platform(s)
 testrig/
   slave.py                 Local pymodbus TCP slave for testing the scanner — see §3b
 docs/                      Design docs and protocol reference (read before touching codec/framing)

@@ -1,31 +1,79 @@
 name: release
 
-# Builds installers for macOS (.dmg, universal), Windows (.msi) and Linux
-# (.AppImage / .deb) whenever a `v*` tag is pushed, and attaches them to a
-# draft GitHub release. Tag with e.g. `git tag v0.1.0 && git push --tags`.
+# Manual-only. Builds installers for macOS (.dmg, universal), Windows (.msi)
+# and/or Linux (.AppImage / .deb) and attaches them to a draft GitHub
+# release. Nothing runs on push/tag — trigger it from the Actions tab
+# ("Run workflow"), pick the tag to publish under and which platform(s) to
+# build, and pick the branch/tag to build *from* via the standard "Use
+# workflow from" ref selector at the top of that same dialog.
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create/publish under (e.g. v0.1.1)"
+        required: true
+        type: string
+      platform:
+        description: "Which platform(s) to build"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - macos
+          - windows
+          - ubuntu
 
 jobs:
+  # Turns the `platform` choice into a matrix, computed once instead of
+  # letting every matrix entry run and then skip itself — keeps the Actions
+  # UI free of "skipped" jobs for platforms nobody asked to build.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          case "$PLATFORM" in
+            macos)
+              matrix='{"include":[
+                {"platform":"macos-latest","args":"--target aarch64-apple-darwin"},
+                {"platform":"macos-latest","args":"--target x86_64-apple-darwin"}
+              ]}'
+              ;;
+            windows)
+              matrix='{"include":[{"platform":"windows-latest","args":""}]}'
+              ;;
+            ubuntu)
+              matrix='{"include":[{"platform":"ubuntu-22.04","args":""}]}'
+              ;;
+            all)
+              matrix='{"include":[
+                {"platform":"macos-latest","args":"--target aarch64-apple-darwin"},
+                {"platform":"macos-latest","args":"--target x86_64-apple-darwin"},
+                {"platform":"ubuntu-22.04","args":""},
+                {"platform":"windows-latest","args":""}
+              ]}'
+              ;;
+            *)
+              echo "::error::Unknown platform input '$PLATFORM'" >&2
+              exit 1
+              ;;
+          esac
+          # Collapse to one line — GITHUB_OUTPUT can't hold embedded newlines.
+          echo "matrix=$(echo "$matrix" | tr -d '\n' | tr -s ' ')" >> "$GITHUB_OUTPUT"
+
   publish-tauri:
+    needs: plan
     permissions:
       contents: write
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: "macos-latest"
-            args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest"
-            args: "--target x86_64-apple-darwin"
-          - platform: "ubuntu-22.04"
-            args: ""
-          - platform: "windows-latest"
-            args: ""
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -72,8 +120,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "ModbusOpen ${{ github.ref_name }}"
+          tagName: ${{ inputs.tag }}
+          releaseName: "ModbusOpen ${{ inputs.tag }}"
           releaseBody: "See the assets below to download and install this version."
           releaseDraft: true
           prerelease: false
