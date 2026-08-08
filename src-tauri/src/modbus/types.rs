@@ -70,6 +70,13 @@ impl DataType {
             DataType::String => 0,
         }
     }
+
+    /// True for the IEEE-754 types, which carry a fractional part. Integer
+    /// registers quantise, so callers that generate or check values need to
+    /// know which side of that line a type sits on.
+    pub fn is_float(self) -> bool {
+        matches!(self, DataType::Float32 | DataType::Float64)
+    }
 }
 
 /// Byte/word arrangement for multi-register values.
@@ -417,4 +424,157 @@ pub struct SimulatorSnapshot {
     pub session_id: u64,
     pub tcp_port: u16,
     pub slaves: Vec<SlaveSnapshot>,
+}
+
+// ---------------------------------------------------------------------------
+// Meter profiles — brand-aware named register maps (scanner + shareable packs)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MeterPointGroup {
+    Instantaneous,
+    Energy,
+    Harmonics,
+    Diagnostics,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MeterSource {
+    BuiltIn,
+    User,
+    #[serde(rename_all = "camelCase")]
+    Imported {
+        from: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RtuDefaults {
+    pub baud_rate: u32,
+    pub data_bits: u8,
+    pub parity: Parity,
+    pub stop_bits: u8,
+}
+
+impl Default for RtuDefaults {
+    fn default() -> Self {
+        // Firmware field default: 9600 8-E-1.
+        Self {
+            baud_rate: 9600,
+            data_bits: 8,
+            parity: Parity::Even,
+            stop_bits: 1,
+        }
+    }
+}
+
+/// One named parameter inside a meter map. Address is always 0-based wire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterPoint {
+    pub key: String,
+    pub label: String,
+    pub address: WireAddress,
+    pub format: DataFormat,
+    #[serde(default)]
+    pub unit: String,
+    #[serde(default = "default_point_group")]
+    pub group: MeterPointGroup,
+    #[serde(default)]
+    pub unverified: bool,
+    /// Optional simulator animation when this profile is loaded as a slave.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sim_behavior: Option<TagBehavior>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sim_initial: Option<f64>,
+}
+
+fn default_point_group() -> MeterPointGroup {
+    MeterPointGroup::Instantaneous
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterProfile {
+    pub id: String,
+    pub brand: String,
+    pub model: String,
+    #[serde(default)]
+    pub description: String,
+    pub source: MeterSource,
+    pub function: FunctionCode,
+    pub block_start: WireAddress,
+    pub block_count: u16,
+    pub default_unit_id: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_rtu: Option<RtuDefaults>,
+    pub points: Vec<MeterPoint>,
+}
+
+/// Shareable export envelope (one or many profiles).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterPack {
+    pub version: u32,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exported_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exported_at: Option<DateTime<Utc>>,
+    pub profiles: Vec<MeterProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MeterImportStatus {
+    New,
+    DuplicateId,
+    Invalid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterImportItem {
+    pub profile: MeterProfile,
+    pub status: MeterImportStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterImportPreview {
+    pub path: String,
+    pub items: Vec<MeterImportItem>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportResolution {
+    Rename,
+    Overwrite,
+    Skip,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterImportChoice {
+    pub profile_id: String,
+    pub resolution: ImportResolution,
+    /// Required when resolution is Rename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AboutInfo {
+    pub app_version: String,
+    pub tauri_version: String,
+    pub os: String,
+    pub arch: String,
 }

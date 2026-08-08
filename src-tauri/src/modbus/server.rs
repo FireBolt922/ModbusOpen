@@ -368,6 +368,141 @@ mod tests {
         server.shutdown().await;
     }
 
+    /// A meter profile loaded into the simulator must actually produce live
+    /// data on the function code that profile reads. Both halves of this were
+    /// broken: extracted profiles carried no tags at all (so every register
+    /// stayed 0), and FC04 profiles had a zero-sized input-register block.
+    #[tokio::test]
+    async fn every_builtin_profile_simulates_live_data_on_its_own_function_code() {
+        use crate::modbus::meters::{builtin_profiles, profile_to_simulator_config};
+        use crate::modbus::types::FunctionCode;
+
+        for profile in builtin_profiles() {
+            let cfg = profile_to_simulator_config(profile, 0, 10);
+            let slave = &cfg.slaves[0];
+            assert!(
+                !slave.tags.is_empty(),
+                "{}: no animated tags — the simulator would serve all zeros",
+                profile.id
+            );
+
+            let app = test_app();
+            let store = Arc::new(ModbusStore::new());
+            store.reset(&[(
+                slave.unit_id,
+                SlaveLayout {
+                    coil_count: slave.coil_count,
+                    discrete_count: slave.discrete_count,
+                    input_register_count: slave.input_register_count,
+                    holding_register_count: slave.holding_register_count,
+                },
+            )]);
+            let mut server = SimulatorServer::bind(
+                "127.0.0.1:0".parse().unwrap(),
+                store,
+                app.handle().clone(),
+                1,
+            )
+            .await
+            .unwrap();
+            let port = server.tcp_port();
+            let tags: Vec<(u8, TagConfig)> = slave
+                .tags
+                .iter()
+                .map(|t| (slave.unit_id, t.clone()))
+                .collect();
+            server.start_animation(app.handle().clone(), tags, 10);
+
+            // Let the ticker run at least once.
+            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
+            let mut client = connect(port, slave.unit_id).await;
+            let regs = client
+                .read_registers(
+                    profile.function,
+                    profile.block_start,
+                    profile.block_count,
+                    slave.unit_id,
+                )
+                .await
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "{}: {:?} read of {} regs at {} failed: {e:?}",
+                        profile.id, profile.function, profile.block_count, profile.block_start
+                    )
+                });
+            assert!(
+                regs.iter().any(|&r| r != 0),
+                "{}: {:?} block at {} is all zeros after animation",
+                profile.id,
+                profile.function,
+                profile.block_start
+            );
+            // Per tag, not just per block: a whole data type could fail to
+            // encode and the block would still look alive from other tags.
+            for tag in &slave.tags {
+                let span = tag.format.data_type.register_span() as usize;
+                let off = tag.address as usize - profile.block_start as usize;
+                let words = &regs[off..off + span];
+                let (value, err) = crate::modbus::codec::decode(words, &tag.format);
+                assert!(
+                    err.is_none(),
+                    "{}: tag '{}' decoded with an error: {err:?}",
+                    profile.id,
+                    tag.name
+                );
+                let n = match value {
+                    crate::modbus::types::TypedValue::Float(v) => v,
+                    crate::modbus::types::TypedValue::Int(v) => v as f64,
+                    crate::modbus::types::TypedValue::Uint(v) => v as f64,
+                    other => panic!("{}: tag '{}' decoded as {other:?}", profile.id, tag.name),
+                };
+                assert!(
+                    n.is_finite(),
+                    "{}: tag '{}' decoded as {n}",
+                    profile.id,
+                    tag.name
+                );
+                // A tag whose behaviour genuinely produces zero — the VFD's
+                // fault/alarm/operation registers ship as `static 0` on
+                // purpose so you can trigger them by hand — is not a failure.
+                let expects_nonzero = match tag.behavior {
+                    crate::modbus::types::TagBehavior::Static => tag.initial_value != 0.0,
+                    crate::modbus::types::TagBehavior::Random { min, max } => {
+                        min > 0.0 || max < 0.0
+                    }
+                    crate::modbus::types::TagBehavior::Counter { step } => {
+                        step != 0.0 || tag.initial_value != 0.0
+                    }
+                    _ => false,
+                };
+                if expects_nonzero {
+                    assert!(
+                        n != 0.0,
+                        "{}: tag '{}' ({:?} {:?}) reads 0 but its behaviour {:?} can't produce 0 \
+                         — it never animated",
+                        profile.id,
+                        tag.name,
+                        tag.format.data_type,
+                        tag.format.word_order,
+                        tag.behavior
+                    );
+                }
+            }
+            // Input-register profiles must not be accidentally served from the
+            // holding block by the request handler.
+            if profile.function == FunctionCode::ReadInputRegisters {
+                assert!(
+                    slave.input_register_count > 0,
+                    "{}: FC04 profile has no input registers",
+                    profile.id
+                );
+            }
+            client.disconnect().await;
+            server.shutdown().await;
+        }
+    }
+
     #[tokio::test]
     async fn two_slave_ids_answer_independently_on_one_port() {
         let app = test_app();

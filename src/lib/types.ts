@@ -222,6 +222,83 @@ export type SimulatorSnapshot = {
   slaves: SlaveSnapshot[];
 };
 
+// ---------------------------------------------------------------------------
+// Meter profiles (hand-maintained mirror of Rust types)
+// ---------------------------------------------------------------------------
+
+export type MeterPointGroup =
+  | "instantaneous"
+  | "energy"
+  | "harmonics"
+  | "diagnostics"
+  | "other";
+
+export type MeterSource =
+  | { kind: "built_in" }
+  | { kind: "user" }
+  | { kind: "imported"; from: string };
+
+export type RtuDefaults = {
+  baudRate: number;
+  dataBits: number;
+  parity: Parity;
+  stopBits: number;
+};
+
+export type MeterPoint = {
+  key: string;
+  label: string;
+  address: number;
+  format: DataFormat;
+  unit: string;
+  group: MeterPointGroup;
+  unverified: boolean;
+  simBehavior?: TagBehavior;
+  simInitial?: number;
+};
+
+export type MeterProfile = {
+  id: string;
+  brand: string;
+  model: string;
+  description: string;
+  source: MeterSource;
+  function: FunctionCode;
+  blockStart: number;
+  blockCount: number;
+  defaultUnitId: number;
+  suggestedRtu?: RtuDefaults;
+  points: MeterPoint[];
+};
+
+export type MeterImportStatus = "new" | "duplicate_id" | "invalid";
+
+export type MeterImportItem = {
+  profile: MeterProfile;
+  status: MeterImportStatus;
+  message?: string;
+};
+
+export type MeterImportPreview = {
+  path: string;
+  items: MeterImportItem[];
+};
+
+export type ImportResolution = "rename" | "overwrite" | "skip";
+
+export type MeterImportChoice = {
+  profileId: string;
+  resolution: ImportResolution;
+  newId?: string;
+};
+
+export type AboutInfo = {
+  appVersion: string;
+  tauriVersion: string;
+  os: string;
+  arch: string;
+};
+
 /** Mirrors src-tauri/src/error.rs::AppError (serde adjacently tagged). */
 export type AppError =
   | { kind: "SerialPortList"; message: string }

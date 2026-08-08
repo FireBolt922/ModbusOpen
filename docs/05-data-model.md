@@ -335,3 +335,21 @@ Every variant carries enough structure for the UI to render a heading plus an ac
 | 05 | Acknowledge | The device accepted the request but needs more time. |
 | 06 | Slave Device Busy | The device is busy. Increase the poll interval and retry. |
 | 0B | Gateway Target Failed | The gateway reached but got no reply from unit {unit}. Check the downstream serial bus. |
+
+## Meter pack (shareable)
+
+Envelope for one or many scanner meter profiles (`.mbmeter.json`):
+
+```json
+{
+  "version": 1,
+  "kind": "meter-pack",
+  "exportedBy": "ModbusOpen 0.1.0",
+  "exportedAt": "2026-08-07T10:00:00Z",
+  "profiles": [ /* MeterProfile[] — see modbus/types.rs MeterProfile */ ]
+}
+```
+
+Built-ins are compiled into the binary; user meters live under the OS app-data `meters/`
+directory. Import never overwrites a built-in id (renames on collision).
+

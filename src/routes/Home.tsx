@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AboutDialog } from "@/components/AboutDialog";
 import {
   Card,
   CardHeader,
@@ -9,7 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { errorMessage, listSerialPorts } from "@/lib/ipc";
+import { aboutInfo, errorMessage, listSerialPorts } from "@/lib/ipc";
 import type { SerialPortInfo } from "@/lib/types";
 
 function SerialPortPanel() {
@@ -83,11 +84,32 @@ function SerialPortPanel() {
 
 export default function Home() {
   const navigate = useNavigate();
+  const [version, setVersion] = useState<string | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
+
+  useEffect(() => {
+    void aboutInfo()
+      .then((info) => setVersion(info.appVersion))
+      .catch(() => setVersion(null));
+  }, []);
 
   return (
     <main className="flex min-h-screen flex-col items-center gap-10 px-6 py-16">
       <div className="text-center">
-        <h1 className="text-2xl font-heading font-semibold">ModbusOpen</h1>
+        <div className="flex items-center justify-center gap-2">
+          <h1 className="text-2xl font-heading font-semibold">ModbusOpen</h1>
+          {version && (
+            <button
+              type="button"
+              onClick={() => setAboutOpen(true)}
+              title="About and diagnostics"
+            >
+              <Badge variant="outline" className="cursor-pointer font-mono">
+                v{version}
+              </Badge>
+            </button>
+          )}
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Open a mode to get started.
         </p>
@@ -119,9 +141,23 @@ export default function Home() {
             </CardDescription>
           </CardHeader>
         </Card>
+
+        <Card
+          className="cursor-pointer transition-colors hover:bg-muted/50 sm:col-span-2"
+          onClick={() => navigate("/meters")}
+        >
+          <CardHeader>
+            <CardTitle>Meters</CardTitle>
+            <CardDescription>
+              Pick a brand map for named parameters, build custom meters, and
+              share packs with colleagues.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
 
       <SerialPortPanel />
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </main>
   );
 }

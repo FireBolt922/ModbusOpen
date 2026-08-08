@@ -154,3 +154,20 @@ gives a two-slave test — exactly what the M1 "change unit ID on the fly" accep
 3. Loading a profile into the **scanner** applies just the `names` and per-row formats to the table
    — so you get labelled rows against real hardware. Cheap to build, disproportionately useful.
 4. Profile 1 + profile 3 loaded together (units 1 and 2 on one TCP port) is the standard M4 demo.
+
+## Shipping location (as of M4 Task 6)
+
+These three profiles (plus the broader electrical-meter library) ship as JSON under
+`src-tauri/src/modbus/meters/builtin/`:
+
+| Id | File |
+|---|---|
+| `lt-electrical-meter` | `lt-electrical-meter.json` |
+| `vfd` | `vfd.json` |
+| `flow-meter` | `flow-meter.json` |
+
+Load into the simulator from **Meters → Load in simulator**, or into the scanner via the
+meter selector on the poll bar. Shareable packs use the `meter-pack` envelope
+(`docs/05-data-model.md`). Adding more meters: `meter-profile` skill +
+`scripts/extract_meter_profiles.py`.
+

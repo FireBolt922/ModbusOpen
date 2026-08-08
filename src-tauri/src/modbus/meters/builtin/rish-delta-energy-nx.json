@@ -1,0 +1,287 @@
+{
+  "id": "rish-delta-energy-nx",
+  "brand": "RISH",
+  "model": "Delta Energy NX",
+  "description": "Auto-extracted from firmware meter_register_constants.py for RISH_DELTA_ENERGY_NX. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "source": {
+    "kind": "built_in"
+  },
+  "function": "read_input_registers",
+  "blockStart": 0,
+  "blockCount": 80,
+  "defaultUnitId": 1,
+  "suggestedRtu": {
+    "baudRate": 9600,
+    "dataBits": 8,
+    "parity": "even",
+    "stopBits": 1
+  },
+  "points": [
+    {
+      "key": "r_phase_current",
+      "label": "R Phase Current",
+      "address": 6,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "y_phase_current",
+      "label": "Y Phase Current",
+      "address": 8,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "b_phase_current",
+      "label": "B Phase Current",
+      "address": 10,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "voltage_average",
+      "label": "Voltage Average",
+      "address": 42,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 225.0,
+        "max": 235.0
+      }
+    },
+    {
+      "key": "current_total",
+      "label": "Current Total",
+      "address": 46,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 14.0,
+        "max": 16.0
+      }
+    },
+    {
+      "key": "active_power",
+      "label": "Active Power",
+      "address": 50,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 145.0,
+        "max": 155.0
+      }
+    },
+    {
+      "key": "power_factor",
+      "label": "Power Factor",
+      "address": 53,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 950.0,
+        "max": 990.0
+      }
+    },
+    {
+      "key": "demand_total",
+      "label": "Demand Total",
+      "address": 54,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 48.0,
+        "max": 52.0
+      }
+    },
+    {
+      "key": "reactive_power",
+      "label": "Reactive Power",
+      "address": 58,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kVAr",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 10.0,
+        "max": 12.0
+      }
+    },
+    {
+      "key": "frequency",
+      "label": "Frequency",
+      "address": 70,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "Hz",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 49.9,
+        "max": 50.1
+      }
+    },
+    {
+      "key": "energy_received",
+      "label": "Energy Received",
+      "address": 72,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kWh",
+      "group": "energy",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "counter",
+        "step": 1.0
+      },
+      "simInitial": 1000.0
+    },
+    {
+      "key": "energy_delivered",
+      "label": "Energy Delivered",
+      "address": 74,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kWh",
+      "group": "energy",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "counter",
+        "step": 1.0
+      },
+      "simInitial": 500.0
+    },
+    {
+      "key": "varh_capacitive_received",
+      "label": "Varh Capacitive Received",
+      "address": 76,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "counter",
+        "step": 1.0
+      },
+      "simInitial": 150.0
+    },
+    {
+      "key": "varh_inductive_received",
+      "label": "Varh Inductive Received",
+      "address": 78,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "counter",
+        "step": 1.0
+      },
+      "simInitial": 200.0
+    }
+  ]
+}

@@ -1,0 +1,325 @@
+{
+  "id": "schneider-pm-5320",
+  "brand": "Schneider",
+  "model": "PM 5320",
+  "description": "Auto-extracted from firmware meter_register_constants.py for SCHNEIDER_PM_5320. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "source": {
+    "kind": "built_in"
+  },
+  "function": "read_holding_registers",
+  "blockStart": 2999,
+  "blockCount": 112,
+  "defaultUnitId": 1,
+  "suggestedRtu": {
+    "baudRate": 9600,
+    "dataBits": 8,
+    "parity": "even",
+    "stopBits": 1
+  },
+  "points": [
+    {
+      "key": "r_phase_current",
+      "label": "R Phase Current",
+      "address": 2999,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "y_phase_current",
+      "label": "Y Phase Current",
+      "address": 3001,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "b_phase_current",
+      "label": "B Phase Current",
+      "address": 3003,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "n_phase_current",
+      "label": "N Phase Current",
+      "address": 3005,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 0.0,
+        "max": 1.5
+      }
+    },
+    {
+      "key": "current_total",
+      "label": "Current Total",
+      "address": 3009,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 14.0,
+        "max": 16.0
+      }
+    },
+    {
+      "key": "current_unbalance",
+      "label": "Current Unbalance",
+      "address": 3017,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 0.0,
+        "max": 3.0
+      }
+    },
+    {
+      "key": "r_phase_voltage",
+      "label": "R Phase Voltage",
+      "address": 3019,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 225.0,
+        "max": 235.0
+      }
+    },
+    {
+      "key": "y_phase_voltage",
+      "label": "Y Phase Voltage",
+      "address": 3021,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 225.0,
+        "max": 235.0
+      }
+    },
+    {
+      "key": "b_phase_voltage",
+      "label": "B Phase Voltage",
+      "address": 3023,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 225.0,
+        "max": 235.0
+      }
+    },
+    {
+      "key": "voltage_average",
+      "label": "Voltage Average",
+      "address": 3025,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 225.0,
+        "max": 235.0
+      }
+    },
+    {
+      "key": "average_line_voltage",
+      "label": "Average Line Voltage",
+      "address": 3035,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 405.0,
+        "max": 420.0
+      }
+    },
+    {
+      "key": "voltage_unbalance",
+      "label": "Voltage Unbalance",
+      "address": 3043,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 0.0,
+        "max": 3.0
+      }
+    },
+    {
+      "key": "active_power",
+      "label": "Active Power",
+      "address": 3059,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 145.0,
+        "max": 155.0
+      }
+    },
+    {
+      "key": "reactive_power",
+      "label": "Reactive Power",
+      "address": 3067,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kVAr",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 10.0,
+        "max": 12.0
+      }
+    },
+    {
+      "key": "demand_total",
+      "label": "Demand Total",
+      "address": 3075,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 48.0,
+        "max": 52.0
+      }
+    },
+    {
+      "key": "frequency",
+      "label": "Frequency",
+      "address": 3109,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "Hz",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 49.9,
+        "max": 50.1
+      }
+    }
+  ]
+}

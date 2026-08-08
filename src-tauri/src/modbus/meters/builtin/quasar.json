@@ -1,0 +1,192 @@
+{
+  "id": "quasar",
+  "brand": "Quasar",
+  "model": "Quasar",
+  "description": "Auto-extracted from firmware meter_register_constants.py for QUASAR. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "source": {
+    "kind": "built_in"
+  },
+  "function": "read_input_registers",
+  "blockStart": 0,
+  "blockCount": 88,
+  "defaultUnitId": 1,
+  "suggestedRtu": {
+    "baudRate": 9600,
+    "dataBits": 8,
+    "parity": "even",
+    "stopBits": 1
+  },
+  "points": [
+    {
+      "key": "r_phase_current",
+      "label": "R Phase Current",
+      "address": 6,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4500.0,
+        "max": 5500.0
+      }
+    },
+    {
+      "key": "y_phase_current",
+      "label": "Y Phase Current",
+      "address": 8,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4500.0,
+        "max": 5500.0
+      }
+    },
+    {
+      "key": "b_phase_current",
+      "label": "B Phase Current",
+      "address": 10,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4500.0,
+        "max": 5500.0
+      }
+    },
+    {
+      "key": "reactive_power",
+      "label": "Reactive Power",
+      "address": 22,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kVAr",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 10.0,
+        "max": 12.0
+      }
+    },
+    {
+      "key": "active_power",
+      "label": "Active Power",
+      "address": 36,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 145.0,
+        "max": 155.0
+      }
+    },
+    {
+      "key": "demand_total",
+      "label": "Demand Total",
+      "address": 40,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 48.0,
+        "max": 52.0
+      }
+    },
+    {
+      "key": "power_factor",
+      "label": "Power Factor",
+      "address": 42,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 950.0,
+        "max": 990.0
+      }
+    },
+    {
+      "key": "voltage_average",
+      "label": "Voltage Average",
+      "address": 84,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 225.0,
+        "max": 235.0
+      }
+    },
+    {
+      "key": "current_total",
+      "label": "Current Total",
+      "address": 86,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 14.0,
+        "max": 16.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "flow-meter",
+  "brand": "Generic",
+  "model": "Flow meter",
+  "description": "Verified from docs/reference/device-profiles.md (other_meters_write_data.py). Unit ID 2, block at wire 0.",
+  "source": {
+    "kind": "built_in"
+  },
+  "function": "read_holding_registers",
+  "blockStart": 0,
+  "blockCount": 4,
+  "defaultUnitId": 2,
+  "points": [
+    {
+      "key": "flow_rate",
+      "label": "Flow Rate",
+      "address": 0,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "m3/h",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 5.0,
+        "max": 15.0
+      },
+      "simInitial": 10.0
+    },
+    {
+      "key": "totaliser",
+      "label": "Totaliser",
+      "address": 2,
+      "format": {
+        "dataType": "uint32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "m3",
+      "group": "energy",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "counter",
+        "step": 10.0
+      },
+      "simInitial": 0.0
+    }
+  ]
+}

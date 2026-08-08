@@ -1,0 +1,154 @@
+{
+  "id": "schneider-em-7230",
+  "brand": "Schneider",
+  "model": "EM 7230",
+  "description": "Auto-extracted from firmware meter_register_constants.py for SCHNEIDER_EM_7230. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "source": {
+    "kind": "built_in"
+  },
+  "function": "read_holding_registers",
+  "blockStart": 2999,
+  "blockCount": 86,
+  "defaultUnitId": 1,
+  "suggestedRtu": {
+    "baudRate": 9600,
+    "dataBits": 8,
+    "parity": "even",
+    "stopBits": 1
+  },
+  "points": [
+    {
+      "key": "r_phase_current",
+      "label": "R Phase Current",
+      "address": 2999,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "y_phase_current",
+      "label": "Y Phase Current",
+      "address": 3001,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "b_phase_current",
+      "label": "B Phase Current",
+      "address": 3003,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "current_total",
+      "label": "Current Total",
+      "address": 3009,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 14.0,
+        "max": 16.0
+      }
+    },
+    {
+      "key": "voltage_average",
+      "label": "Voltage Average",
+      "address": 3025,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 225.0,
+        "max": 235.0
+      }
+    },
+    {
+      "key": "active_power",
+      "label": "Active Power",
+      "address": 3059,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 145.0,
+        "max": 155.0
+      }
+    },
+    {
+      "key": "power_factor",
+      "label": "Power Factor",
+      "address": 3083,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 0.95,
+        "max": 0.99
+      }
+    }
+  ]
+}

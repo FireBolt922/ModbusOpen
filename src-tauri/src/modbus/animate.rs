@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use super::codec::encode;
 use super::store::ModbusStore;
-use super::types::{DataType, TagBehavior, TagConfig, TypedValue, WireAddress};
+use super::types::{DataFormat, DataType, TagBehavior, TagConfig, TypedValue, WireAddress};
 
 fn typed_value_for(data_type: DataType, v: f64) -> Option<TypedValue> {
     match data_type {
@@ -82,10 +82,27 @@ impl TagRuntime {
     }
 
     fn write_into(&self, store: &ModbusStore, value: f64) {
-        let Some(typed) = typed_value_for(self.config.format.data_type, value) else {
+        // `value` is in engineering units (0.7 A); the register holds the raw
+        // count (7, at scale 0.1). Undo the scale *before* building the
+        // TypedValue: an integer TypedValue can't carry 0.7, so quantising
+        // first writes 0 and the tag looks dead on screen. Round rather than
+        // truncate — 0.7 / 0.1 is 6.999… in binary floating point.
+        let fmt = self.config.format;
+        let raw_value = if fmt.scale == 1.0 && fmt.offset == 0.0 {
+            value
+        } else {
+            ((value - fmt.offset) / fmt.scale).round()
+        };
+        // Encode against an identity format so the scale isn't applied twice.
+        let identity = DataFormat {
+            scale: 1.0,
+            offset: 0.0,
+            ..fmt
+        };
+        let Some(typed) = typed_value_for(identity.data_type, raw_value) else {
             return;
         };
-        let Ok(regs) = encode(&typed, &self.config.format) else {
+        let Ok(regs) = encode(&typed, &identity) else {
             return;
         };
         let _ = if regs.len() == 1 {
@@ -93,6 +110,12 @@ impl TagRuntime {
         } else {
             store.write_multiple_registers(self.unit_id, self.config.address, &regs)
         };
+        // Meters that answer FC04 (every RISH and Selec, Quasar, Siemens) carry
+        // the same live values in their input registers. Mirror them so a
+        // profile's function code doesn't decide whether the simulator has
+        // anything to serve. This is internal seeding, not a Modbus write —
+        // no function code may write input registers.
+        let _ = store.seed_input_registers(self.unit_id, self.config.address, &regs);
     }
 }
 

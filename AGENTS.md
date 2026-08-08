@@ -40,6 +40,8 @@ src-tauri/
     codec.rs              Register <-> typed value. Word orders. HEAVILY TESTED.
     server.rs             Simulator (slave) side
     store.rs              Simulator datastore
+    meters/               Built-in meter profiles (JSON + loader)
+  src/meters/             User meter library (app-data JSON, import/export)
   src/error.rs            One error enum -> user-facing strings
 docs/                     Design docs and protocol reference
 .claude/skills/           Skills — see below
@@ -54,6 +56,7 @@ Invoke these; don't reimplement what they cover.
 | `modbus-protocol` | Any protocol-level work: framing, function codes, addressing, decoding, exceptions, timing |
 | `tauri-ipc` | Adding or changing a Rust↔UI command or event. Enforces the one-way-to-do-it contract |
 | `modbus-test-rig` | Spinning up a local slave or virtual serial pair to test against |
+| `meter-profile` | Adding or verifying a built-in meter map, or translating firmware/vendor maps into profiles |
 | `milestone-check` | Before declaring any milestone complete |
 
 ## Conventions

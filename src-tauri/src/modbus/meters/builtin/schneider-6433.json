@@ -1,0 +1,97 @@
+{
+  "id": "schneider-6433",
+  "brand": "Schneider",
+  "model": "6433",
+  "description": "Auto-extracted from firmware meter_register_constants.py for SCHNEIDER_6433. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "source": {
+    "kind": "built_in"
+  },
+  "function": "read_holding_registers",
+  "blockStart": 3000,
+  "blockCount": 104,
+  "defaultUnitId": 1,
+  "suggestedRtu": {
+    "baudRate": 9600,
+    "dataBits": 8,
+    "parity": "even",
+    "stopBits": 1
+  },
+  "points": [
+    {
+      "key": "current_total",
+      "label": "Current Total",
+      "address": 3012,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 14.0,
+        "max": 16.0
+      }
+    },
+    {
+      "key": "r_phase_current",
+      "label": "R Phase Current",
+      "address": 3042,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "y_phase_current",
+      "label": "Y Phase Current",
+      "address": 3072,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    },
+    {
+      "key": "b_phase_current",
+      "label": "B Phase Current",
+      "address": 3102,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4.5,
+        "max": 5.5
+      }
+    }
+  ]
+}

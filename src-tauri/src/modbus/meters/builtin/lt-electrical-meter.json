@@ -1,0 +1,220 @@
+{
+  "id": "lt-electrical-meter",
+  "brand": "L&T",
+  "model": "4-quadrant energy meter",
+  "description": "Verified from docs/reference/device-profiles.md (electrical_write_data.py). Float32 CDAB holding registers from wire 100.",
+  "source": {
+    "kind": "built_in"
+  },
+  "function": "read_holding_registers",
+  "blockStart": 100,
+  "blockCount": 120,
+  "defaultUnitId": 1,
+  "suggestedRtu": {
+    "baudRate": 9600,
+    "dataBits": 8,
+    "parity": "even",
+    "stopBits": 1
+  },
+  "points": [
+    {
+      "key": "active_power",
+      "label": "Active Power",
+      "address": 100,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 145.0,
+        "max": 155.0
+      },
+      "simInitial": 150.0
+    },
+    {
+      "key": "reactive_power",
+      "label": "Reactive Power",
+      "address": 108,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kVAr",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 10.0,
+        "max": 12.0
+      },
+      "simInitial": 11.0
+    },
+    {
+      "key": "power_factor",
+      "label": "Power Factor",
+      "address": 116,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 0.95,
+        "max": 0.99
+      },
+      "simInitial": 0.97
+    },
+    {
+      "key": "demand_total",
+      "label": "Demand Total",
+      "address": 124,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 48.0,
+        "max": 52.0
+      },
+      "simInitial": 50.0
+    },
+    {
+      "key": "frequency",
+      "label": "Frequency",
+      "address": 132,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "Hz",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 49.9,
+        "max": 50.1
+      },
+      "simInitial": 50.0
+    },
+    {
+      "key": "voltage_average",
+      "label": "Voltage Average",
+      "address": 148,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 225.0,
+        "max": 235.0
+      },
+      "simInitial": 230.0
+    },
+    {
+      "key": "current_total",
+      "label": "Current Total",
+      "address": 150,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 14.0,
+        "max": 16.0
+      },
+      "simInitial": 15.0
+    },
+    {
+      "key": "energy_received",
+      "label": "Energy Received",
+      "address": 158,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kWh",
+      "group": "energy",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 1000.0,
+        "max": 1001.0
+      },
+      "simInitial": 1000.5
+    },
+    {
+      "key": "vah_received",
+      "label": "VAH Received",
+      "address": 160,
+      "format": {
+        "dataType": "float32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kVAh",
+      "group": "energy",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "random",
+        "min": 1050.0,
+        "max": 1051.0
+      },
+      "simInitial": 1050.5
+    },
+    {
+      "key": "run_hours",
+      "label": "Run Hours",
+      "address": 216,
+      "format": {
+        "dataType": "uint32",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "h",
+      "group": "diagnostics",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "counter",
+        "step": 1.0
+      },
+      "simInitial": 100.0
+    }
+  ]
+}

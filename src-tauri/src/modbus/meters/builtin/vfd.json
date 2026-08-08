@@ -1,0 +1,465 @@
+{
+  "id": "vfd",
+  "brand": "Generic",
+  "model": "VFD",
+  "description": "Verified from docs/reference/device-profiles.md (vfd_write_data.py). Uint16 with per-register scale.",
+  "source": {
+    "kind": "built_in"
+  },
+  "function": "read_holding_registers",
+  "blockStart": 256,
+  "blockCount": 25,
+  "defaultUnitId": 1,
+  "points": [
+    {
+      "key": "running_frequency",
+      "label": "Running Frequency",
+      "address": 256,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 0.01,
+        "offset": 0.0
+      },
+      "unit": "Hz",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 51.79
+    },
+    {
+      "key": "running_speed",
+      "label": "Running Speed",
+      "address": 257,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "rpm",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 1485.0
+    },
+    {
+      "key": "phase_u_dc_voltage",
+      "label": "Phase U DC Voltage",
+      "address": 258,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 540.0
+    },
+    {
+      "key": "phase_v_dc_voltage",
+      "label": "Phase V DC Voltage",
+      "address": 259,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 541.0
+    },
+    {
+      "key": "phase_w_dc_voltage",
+      "label": "Phase W DC Voltage",
+      "address": 260,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 539.0
+    },
+    {
+      "key": "input_voltage_uab",
+      "label": "Input Voltage Uab",
+      "address": 261,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 415.0
+    },
+    {
+      "key": "input_voltage_ubc",
+      "label": "Input Voltage Ubc",
+      "address": 262,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 414.0
+    },
+    {
+      "key": "input_voltage_uca",
+      "label": "Input Voltage Uca",
+      "address": 263,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 416.0
+    },
+    {
+      "key": "input_current_ia",
+      "label": "Input Current Ia",
+      "address": 264,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 0.1,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 1.3
+    },
+    {
+      "key": "input_current_ib",
+      "label": "Input Current Ib",
+      "address": 265,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 0.1,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 0.7000000000000001
+    },
+    {
+      "key": "input_current_ic",
+      "label": "Input Current Ic",
+      "address": 266,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 0.1,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 0.2
+    },
+    {
+      "key": "output_current_iu",
+      "label": "Output Current Iu",
+      "address": 267,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 0.1,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 0.5
+    },
+    {
+      "key": "output_current_iv",
+      "label": "Output Current Iv",
+      "address": 268,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 0.1,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 0.30000000000000004
+    },
+    {
+      "key": "output_current_iw",
+      "label": "Output Current Iw",
+      "address": 269,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 0.1,
+        "offset": 0.0
+      },
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 0.2
+    },
+    {
+      "key": "output_voltage_uuv",
+      "label": "Output Voltage Uuv",
+      "address": 270,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 415.0
+    },
+    {
+      "key": "output_voltage_uvw",
+      "label": "Output Voltage Uvw",
+      "address": 271,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 414.0
+    },
+    {
+      "key": "output_voltage_uwu",
+      "label": "Output Voltage Uwu",
+      "address": 272,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "V",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 416.0
+    },
+    {
+      "key": "running_time",
+      "label": "Running Time",
+      "address": 273,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "h",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 25.0
+    },
+    {
+      "key": "fault_indication",
+      "label": "Fault Indication",
+      "address": 274,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "diagnostics",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 0.0
+    },
+    {
+      "key": "operation_record",
+      "label": "Operation Record",
+      "address": 275,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "diagnostics",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 0.0
+    },
+    {
+      "key": "alarm_indication",
+      "label": "Alarm Indication",
+      "address": 276,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "diagnostics",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 0.0
+    },
+    {
+      "key": "given_speed",
+      "label": "Given Speed",
+      "address": 277,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "rpm",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 1485.0
+    },
+    {
+      "key": "input_power",
+      "label": "Input Power",
+      "address": 278,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "W",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 5500.0
+    },
+    {
+      "key": "input_power_factor",
+      "label": "Input Power Factor",
+      "address": 279,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 0.01,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 0.98
+    },
+    {
+      "key": "output_power",
+      "label": "Output Power",
+      "address": 280,
+      "format": {
+        "dataType": "uint16",
+        "wordOrder": "cdab",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "W",
+      "group": "instantaneous",
+      "unverified": false,
+      "simBehavior": {
+        "kind": "static"
+      },
+      "simInitial": 5200.0
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+{
+  "id": "socomec-a40",
+  "brand": "Socomec",
+  "model": "A40",
+  "description": "Auto-extracted from firmware meter_register_constants.py for SOCOMEC_A40. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "source": {
+    "kind": "built_in"
+  },
+  "function": "read_holding_registers",
+  "blockStart": 768,
+  "blockCount": 97,
+  "defaultUnitId": 1,
+  "suggestedRtu": {
+    "baudRate": 9600,
+    "dataBits": 8,
+    "parity": "even",
+    "stopBits": 1
+  },
+  "points": [
+    {
+      "key": "y_phase_current",
+      "label": "Y Phase Current",
+      "address": 769,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4500.0,
+        "max": 5500.0
+      }
+    },
+    {
+      "key": "b_phase_current",
+      "label": "B Phase Current",
+      "address": 771,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 4500.0,
+        "max": 5500.0
+      }
+    },
+    {
+      "key": "frequency",
+      "label": "Frequency",
+      "address": 787,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "Hz",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 49.9,
+        "max": 50.1
+      }
+    },
+    {
+      "key": "active_power",
+      "label": "Active Power",
+      "address": 789,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 145.0,
+        "max": 155.0
+      }
+    },
+    {
+      "key": "reactive_power",
+      "label": "Reactive Power",
+      "address": 791,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kVAr",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 10.0,
+        "max": 12.0
+      }
+    },
+    {
+      "key": "demand_total",
+      "label": "Demand Total",
+      "address": 793,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kW",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 48.0,
+        "max": 52.0
+      }
+    },
+    {
+      "key": "power_factor",
+      "label": "Power Factor",
+      "address": 795,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "instantaneous",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "random",
+        "min": 950.0,
+        "max": 990.0
+      }
+    },
+    {
+      "key": "energy_received",
+      "label": "Energy Received",
+      "address": 855,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "kWh",
+      "group": "energy",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "counter",
+        "step": 1.0
+      },
+      "simInitial": 1000.0
+    },
+    {
+      "key": "varh_inductive_received",
+      "label": "Varh Inductive Received",
+      "address": 857,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "counter",
+        "step": 1.0
+      },
+      "simInitial": 200.0
+    },
+    {
+      "key": "varh_capacitive_received",
+      "label": "Varh Capacitive Received",
+      "address": 863,
+      "format": {
+        "dataType": "int32",
+        "wordOrder": "abcd",
+        "scale": 1.0,
+        "offset": 0.0
+      },
+      "unit": "",
+      "group": "other",
+      "unverified": true,
+      "simBehavior": {
+        "kind": "counter",
+        "step": 1.0
+      },
+      "simInitial": 150.0
+    }
+  ]
+}
