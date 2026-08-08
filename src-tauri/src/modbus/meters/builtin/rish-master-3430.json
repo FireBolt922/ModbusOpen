@@ -2,7 +2,7 @@
   "id": "rish-master-3430",
   "brand": "RISH",
   "model": "Master 3430",
-  "description": "Auto-extracted from firmware meter_register_constants.py for RISH_Master_3430. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for RISH_Master_3430. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -27,8 +27,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -46,8 +46,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -65,8 +65,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",

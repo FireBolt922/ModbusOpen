@@ -2,7 +2,7 @@
   "id": "meatrol-me-337",
   "brand": "Meatrol",
   "model": "ME-337",
-  "description": "Auto-extracted from firmware meter_register_constants.py for MEATROL_ME_337. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for MEATROL_ME_337. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -27,9 +27,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 4.5,
@@ -46,9 +46,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 4.5,
@@ -67,7 +67,7 @@
       },
       "unit": "A",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 14.0,
@@ -86,7 +86,7 @@
       },
       "unit": "V",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 225.0,
@@ -105,7 +105,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,
@@ -124,7 +124,7 @@
       },
       "unit": "kVAr",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 10.0,
@@ -143,7 +143,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 48.0,
@@ -162,7 +162,7 @@
       },
       "unit": "",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 0.95,
@@ -181,7 +181,7 @@
       },
       "unit": "Hz",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 49.9,

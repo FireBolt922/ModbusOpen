@@ -2,7 +2,7 @@
   "id": "quasar",
   "brand": "Quasar",
   "model": "Quasar",
-  "description": "Auto-extracted from firmware meter_register_constants.py for QUASAR. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for QUASAR. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -27,8 +27,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -46,8 +46,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -65,8 +65,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -100,12 +100,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,
@@ -119,12 +119,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 48.0,
@@ -138,16 +138,16 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
       "unit": "",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 950.0,
-        "max": 990.0
+        "min": 0.95,
+        "max": 0.99
       }
     },
     {
@@ -157,12 +157,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "V",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 225.0,
@@ -176,12 +176,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
       "unit": "A",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 14.0,

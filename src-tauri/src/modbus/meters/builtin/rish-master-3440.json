@@ -2,7 +2,7 @@
   "id": "rish-master-3440",
   "brand": "RISH",
   "model": "Master 3440",
-  "description": "Auto-extracted from firmware meter_register_constants.py for RISH_MASTER_3440. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for RISH_MASTER_3440. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -27,9 +27,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 4.5,
@@ -46,9 +46,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 4.5,
@@ -65,9 +65,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 4.5,
@@ -86,7 +86,7 @@
       },
       "unit": "V",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 225.0,
@@ -105,7 +105,7 @@
       },
       "unit": "A",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 14.0,
@@ -124,7 +124,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,
@@ -143,7 +143,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 48.0,
@@ -162,7 +162,7 @@
       },
       "unit": "kVAr",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 10.0,
@@ -181,7 +181,7 @@
       },
       "unit": "",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 0.95,
@@ -200,7 +200,7 @@
       },
       "unit": "Hz",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 49.9,
@@ -219,7 +219,7 @@
       },
       "unit": "kWh",
       "group": "energy",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0
@@ -238,7 +238,7 @@
       },
       "unit": "kWh",
       "group": "energy",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0
@@ -247,7 +247,7 @@
     },
     {
       "key": "varh_capacitive_received",
-      "label": "Varh Capacitive Received",
+      "label": "VARh Capacitive Received",
       "address": 76,
       "format": {
         "dataType": "float32",
@@ -255,9 +255,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "kVArh",
+      "group": "energy",
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0
@@ -266,7 +266,7 @@
     },
     {
       "key": "varh_inductive_received",
-      "label": "Varh Inductive Received",
+      "label": "VARh Inductive Received",
       "address": 78,
       "format": {
         "dataType": "float32",
@@ -274,9 +274,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "kVArh",
+      "group": "energy",
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0

@@ -186,10 +186,18 @@ mod tests {
                     TagBehavior::Counter { .. } => pt.sim_initial.unwrap_or(1.0),
                     _ => continue,
                 };
-                // encode() is strict about which TypedValue matches which
-                // register type, exactly as the write path is.
+                // Engineering units (0.97 PF, 0.7 A). A scaled integer register
+                // must be written as Float so encode can undo the scale; an
+                // identity-scale integer still takes Uint/Int.
+                let scaled = pt.format.scale != 1.0 || pt.format.offset != 0.0;
                 let typed = match pt.format.data_type {
                     DataType::Float32 | DataType::Float64 => TypedValue::Float(probe),
+                    DataType::Uint16 | DataType::Uint32 | DataType::Uint64 if scaled => {
+                        TypedValue::Float(probe)
+                    }
+                    DataType::Int16 | DataType::Int32 | DataType::Int64 if scaled => {
+                        TypedValue::Float(probe)
+                    }
                     DataType::Uint16 | DataType::Uint32 | DataType::Uint64 => {
                         TypedValue::Uint(probe as u64)
                     }
@@ -210,7 +218,9 @@ mod tests {
                     TypedValue::Uint(value) => value as f64,
                     other => panic!("{}: '{}' decoded as {other:?}", p.id, pt.key),
                 };
-                let expected = if pt.format.data_type.is_float() {
+                // Scaled integers decode back to Float(engineering); unscaled
+                // integers stay integral.
+                let expected = if pt.format.data_type.is_float() || scaled {
                     probe
                 } else {
                     (probe as i64) as f64

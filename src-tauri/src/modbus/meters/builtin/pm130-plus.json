@@ -2,7 +2,7 @@
   "id": "pm130-plus",
   "brand": "SATEC",
   "model": "PM130 Plus",
-  "description": "Auto-extracted from firmware meter_register_constants.py for PM130_PLUS. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for PM130_PLUS. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -27,9 +27,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 4500.0,
@@ -46,9 +46,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 4500.0,
@@ -65,9 +65,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 4500.0,
@@ -86,7 +86,7 @@
       },
       "unit": "",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 950.0,
@@ -105,7 +105,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,
@@ -124,7 +124,7 @@
       },
       "unit": "kVAr",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 10.0,
@@ -143,7 +143,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 48.0,
@@ -162,7 +162,7 @@
       },
       "unit": "Hz",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 49.9,
@@ -190,7 +190,7 @@
     },
     {
       "key": "varh_inductive_received",
-      "label": "Varh Inductive Received",
+      "label": "VARh Inductive Received",
       "address": 291,
       "format": {
         "dataType": "uint16",
@@ -198,8 +198,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "kVArh",
+      "group": "energy",
       "unverified": true,
       "simBehavior": {
         "kind": "counter",
@@ -209,7 +209,7 @@
     },
     {
       "key": "varh_capacitive_received",
-      "label": "Varh Capacitive Received",
+      "label": "VARh Capacitive Received",
       "address": 293,
       "format": {
         "dataType": "uint16",
@@ -217,8 +217,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "kVArh",
+      "group": "energy",
       "unverified": true,
       "simBehavior": {
         "kind": "counter",
@@ -228,7 +228,7 @@
     },
     {
       "key": "phase_red_voltage_harmonics",
-      "label": "Phase Red Voltage Harmonics",
+      "label": "R Voltage Harmonics",
       "address": 295,
       "format": {
         "dataType": "uint16",
@@ -236,9 +236,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "%",
+      "group": "harmonics",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 1000.0,
@@ -247,7 +247,7 @@
     },
     {
       "key": "phase_yellow_voltage_harmonics",
-      "label": "Phase Yellow Voltage Harmonics",
+      "label": "Y Voltage Harmonics",
       "address": 296,
       "format": {
         "dataType": "uint16",
@@ -255,9 +255,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "%",
+      "group": "harmonics",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 1000.0,
@@ -266,7 +266,7 @@
     },
     {
       "key": "phase_blue_voltage_harmonics",
-      "label": "Phase Blue Voltage Harmonics",
+      "label": "B Voltage Harmonics",
       "address": 297,
       "format": {
         "dataType": "uint16",
@@ -274,9 +274,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "%",
+      "group": "harmonics",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 1000.0,
@@ -285,7 +285,7 @@
     },
     {
       "key": "phase_red_current_harmonics",
-      "label": "Phase Red Current Harmonics",
+      "label": "R Current Harmonics",
       "address": 298,
       "format": {
         "dataType": "uint16",
@@ -293,9 +293,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "%",
+      "group": "harmonics",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 1000.0,
@@ -304,7 +304,7 @@
     },
     {
       "key": "phase_yellow_current_harmonics",
-      "label": "Phase Yellow Current Harmonics",
+      "label": "Y Current Harmonics",
       "address": 299,
       "format": {
         "dataType": "uint16",
@@ -312,9 +312,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "%",
+      "group": "harmonics",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 1000.0,
@@ -323,7 +323,7 @@
     },
     {
       "key": "phase_blue_current_harmonics",
-      "label": "Phase Blue Current Harmonics",
+      "label": "B Current Harmonics",
       "address": 300,
       "format": {
         "dataType": "uint16",
@@ -331,9 +331,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "%",
+      "group": "harmonics",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 1000.0,

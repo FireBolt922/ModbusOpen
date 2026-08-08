@@ -35,7 +35,18 @@ python3 scripts/extract_meter_profiles.py \
   --out src-tauri/src/modbus/meters/builtin
 ```
 
-Then **reconcile** each profile by hand. Extracted points are `unverified: true`.
+The extractor pulls **per-parameter scales** from each
+`modbus_main/meter_codes/<meter>.py` driver:
+
+- Linear `* 0.01`, `/ 10`, `/ 1000`, etc. become `format.scale`.
+- A trailing `* 1000` on power/energy is treated as the firmware's **kW→W /
+  kWh→Wh** upload conversion and is **stripped** — profile units stay kW/kWh.
+- Points whose scale came from the driver are marked `unverified: false`.
+- Points with no driver evidence stay `unverified: true` at scale `1.0`.
+- Non-linear formulas (ICD conditional PF, PM130 0–9999 range) are **not**
+  guessed; they stay scale `1.0` / unverified (or listed in `MANUAL_SCALES`).
+
+Always re-check a sample against the driver after regenerating.
 
 ## The addressing trap
 

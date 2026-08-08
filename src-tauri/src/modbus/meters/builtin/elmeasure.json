@@ -2,7 +2,7 @@
   "id": "elmeasure",
   "brand": "Elmeasure",
   "model": "Elmeasure",
-  "description": "Auto-extracted from firmware meter_register_constants.py for ELMEASURE. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for ELMEASURE. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -141,8 +141,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -160,8 +160,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -179,8 +179,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -228,7 +228,7 @@
     },
     {
       "key": "varh_inductive_received",
-      "label": "Varh Inductive Received",
+      "label": "VARh Inductive Received",
       "address": 162,
       "format": {
         "dataType": "float32",
@@ -236,8 +236,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "kVArh",
+      "group": "energy",
       "unverified": true,
       "simBehavior": {
         "kind": "counter",
@@ -247,7 +247,7 @@
     },
     {
       "key": "varh_capacitive_received",
-      "label": "Varh Capacitive Received",
+      "label": "VARh Capacitive Received",
       "address": 164,
       "format": {
         "dataType": "float32",
@@ -255,8 +255,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "kVArh",
+      "group": "energy",
       "unverified": true,
       "simBehavior": {
         "kind": "counter",
@@ -285,7 +285,7 @@
     },
     {
       "key": "phase_red_voltage_harmonics",
-      "label": "Phase Red Voltage Harmonics",
+      "label": "R Voltage Harmonics",
       "address": 184,
       "format": {
         "dataType": "float32",
@@ -293,8 +293,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "%",
+      "group": "harmonics",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -304,7 +304,7 @@
     },
     {
       "key": "phase_yellow_voltage_harmonics",
-      "label": "Phase Yellow Voltage Harmonics",
+      "label": "Y Voltage Harmonics",
       "address": 186,
       "format": {
         "dataType": "float32",
@@ -312,8 +312,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "%",
+      "group": "harmonics",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -323,7 +323,7 @@
     },
     {
       "key": "phase_blue_voltage_harmonics",
-      "label": "Phase Blue Voltage Harmonics",
+      "label": "B Voltage Harmonics",
       "address": 188,
       "format": {
         "dataType": "float32",
@@ -331,8 +331,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "%",
+      "group": "harmonics",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -342,7 +342,7 @@
     },
     {
       "key": "phase_red_current_harmonics",
-      "label": "Phase Red Current Harmonics",
+      "label": "R Current Harmonics",
       "address": 190,
       "format": {
         "dataType": "float32",
@@ -350,8 +350,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "%",
+      "group": "harmonics",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -361,7 +361,7 @@
     },
     {
       "key": "phase_yellow_current_harmonics",
-      "label": "Phase Yellow Current Harmonics",
+      "label": "Y Current Harmonics",
       "address": 192,
       "format": {
         "dataType": "float32",
@@ -369,8 +369,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "%",
+      "group": "harmonics",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -380,7 +380,7 @@
     },
     {
       "key": "phase_blue_current_harmonics",
-      "label": "Phase Blue Current Harmonics",
+      "label": "B Current Harmonics",
       "address": 194,
       "format": {
         "dataType": "float32",
@@ -388,8 +388,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "%",
+      "group": "harmonics",
       "unverified": true,
       "simBehavior": {
         "kind": "random",

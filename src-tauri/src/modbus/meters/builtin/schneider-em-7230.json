@@ -2,7 +2,7 @@
   "id": "schneider-em-7230",
   "brand": "Schneider",
   "model": "EM 7230",
-  "description": "Auto-extracted from firmware meter_register_constants.py for SCHNEIDER_EM_7230. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for SCHNEIDER_EM_7230. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -27,8 +27,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -46,8 +46,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -65,8 +65,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -124,7 +124,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,

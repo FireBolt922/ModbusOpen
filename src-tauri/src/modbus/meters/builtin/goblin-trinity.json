@@ -2,7 +2,7 @@
   "id": "goblin-trinity",
   "brand": "Goblin",
   "model": "Trinity",
-  "description": "Auto-extracted from firmware meter_register_constants.py for GOBLIN_TRINITY. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for GOBLIN_TRINITY. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -24,12 +24,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "V",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 225.0,
@@ -43,16 +43,16 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -62,16 +62,16 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -81,16 +81,16 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -100,12 +100,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "A",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 14.0,
@@ -119,12 +119,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
       "unit": "Hz",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 49.9,
@@ -138,16 +138,16 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
       "unit": "",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 950.0,
-        "max": 990.0
+        "min": 0.95,
+        "max": 0.99
       }
     },
     {
@@ -157,12 +157,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,
@@ -176,12 +176,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "kVAr",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 10.0,
@@ -195,12 +195,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 48.0,
@@ -214,12 +214,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "kWh",
       "group": "energy",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0
@@ -228,17 +228,17 @@
     },
     {
       "key": "varh_inductive_received",
-      "label": "Varh Inductive Received",
+      "label": "VARh Inductive Received",
       "address": 279,
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "kVArh",
+      "group": "energy",
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0
@@ -247,17 +247,17 @@
     },
     {
       "key": "varh_capacitive_received",
-      "label": "Varh Capacitive Received",
+      "label": "VARh Capacitive Received",
       "address": 281,
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "kVArh",
+      "group": "energy",
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0
@@ -266,7 +266,7 @@
     },
     {
       "key": "phase_red_voltage_harmonics",
-      "label": "Phase Red Voltage Harmonics",
+      "label": "R Voltage Harmonics",
       "address": 299,
       "format": {
         "dataType": "int32",
@@ -274,9 +274,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "%",
+      "group": "harmonics",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 1000.0,
@@ -285,7 +285,7 @@
     },
     {
       "key": "phase_red_current_harmonics",
-      "label": "Phase Red Current Harmonics",
+      "label": "R Current Harmonics",
       "address": 315,
       "format": {
         "dataType": "int32",
@@ -293,9 +293,9 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "%",
+      "group": "harmonics",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 1000.0,

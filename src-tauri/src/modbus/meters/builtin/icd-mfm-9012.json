@@ -2,7 +2,7 @@
   "id": "icd-mfm-9012",
   "brand": "ICD",
   "model": "MFM-9012",
-  "description": "Auto-extracted from firmware meter_register_constants.py for ICD_MFM_9012. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for ICD_MFM_9012. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -43,16 +43,16 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -62,16 +62,16 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -81,16 +81,16 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -105,7 +105,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 48.0,
@@ -124,7 +124,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,
@@ -157,12 +157,12 @@
       "format": {
         "dataType": "float32",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "kWh",
       "group": "energy",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0

@@ -2,7 +2,7 @@
   "id": "schneider",
   "brand": "Schneider",
   "model": "EM series (generic)",
-  "description": "Auto-extracted from firmware meter_register_constants.py for SCHNEIDER. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for SCHNEIDER. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -122,8 +122,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -141,8 +141,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -160,8 +160,8 @@
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",

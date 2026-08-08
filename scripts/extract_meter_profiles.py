@@ -122,18 +122,38 @@ PARAM_META = {
     "VOLTAGE_L1_L2": ("Voltage L1-L2", "V", "instantaneous"),
     "VOLTAGE_L2_L3": ("Voltage L2-L3", "V", "instantaneous"),
     "VOLTAGE_L3_L1": ("Voltage L3-L1", "V", "instantaneous"),
+    "R_PHASE_VOLTAGE": ("R Phase Voltage", "V", "instantaneous"),
+    "Y_PHASE_VOLTAGE": ("Y Phase Voltage", "V", "instantaneous"),
+    "B_PHASE_VOLTAGE": ("B Phase Voltage", "V", "instantaneous"),
+    "AVERAGE_LINE_VOLTAGE": ("Average Line Voltage", "V", "instantaneous"),
     "CURRENT_TOTAL": ("Current Total", "A", "instantaneous"),
     "CURRENT_L1": ("Current L1", "A", "instantaneous"),
     "CURRENT_L2": ("Current L2", "A", "instantaneous"),
     "CURRENT_L3": ("Current L3", "A", "instantaneous"),
+    "R_PHASE_CURRENT": ("R Phase Current", "A", "instantaneous"),
+    "Y_PHASE_CURRENT": ("Y Phase Current", "A", "instantaneous"),
+    "B_PHASE_CURRENT": ("B Phase Current", "A", "instantaneous"),
+    "N_PHASE_CURRENT": ("N Phase Current", "A", "instantaneous"),
+    "VOLTAGE_UNBALANCE": ("Voltage Unbalance", "%", "instantaneous"),
+    "CURRENT_UNBALANCE": ("Current Unbalance", "%", "instantaneous"),
     "DEMAND_TOTAL": ("Demand Total", "kW", "instantaneous"),
     "ENERGY_RECEIVED": ("Energy Received", "kWh", "energy"),
     "ENERGY_DELIVERED": ("Energy Delivered", "kWh", "energy"),
     "ENERGY_TOTAL": ("Energy Total", "kWh", "energy"),
     "VAH_RECEIVED": ("VAH Received", "kVAh", "energy"),
+    "VAH_Received": ("VAH Received", "kVAh", "energy"),
+    "VAH_R": ("VAH Received", "kVAh", "energy"),
+    "VARH_INDUCTIVE_RECEIVED": ("VARh Inductive Received", "kVArh", "energy"),
+    "VARH_CAPACITIVE_RECEIVED": ("VARh Capacitive Received", "kVArh", "energy"),
     "RUN_HOURS": ("Run Hours", "h", "diagnostics"),
     "THD_VOLTAGE": ("THD Voltage", "%", "harmonics"),
     "THD_CURRENT": ("THD Current", "%", "harmonics"),
+    "PHASE_RED_VOLTAGE_HARMONICS": ("R Voltage Harmonics", "%", "harmonics"),
+    "PHASE_YELLOW_VOLTAGE_HARMONICS": ("Y Voltage Harmonics", "%", "harmonics"),
+    "PHASE_BLUE_VOLTAGE_HARMONICS": ("B Voltage Harmonics", "%", "harmonics"),
+    "PHASE_RED_CURRENT_HARMONICS": ("R Current Harmonics", "%", "harmonics"),
+    "PHASE_YELLOW_CURRENT_HARMONICS": ("Y Current Harmonics", "%", "harmonics"),
+    "PHASE_BLUE_CURRENT_HARMONICS": ("B Current Harmonics", "%", "harmonics"),
 }
 
 
@@ -166,6 +186,355 @@ INT32_METERS = {
 # Entirely 16-bit: TRINITY_NF_29 uses decode_16bit_uint throughout, and
 # PM130_PLUS encodes every value as a raw 0-9999 range word.
 UINT16_METERS = {"TRINITY_NF_29", "PM130_PLUS"}
+
+
+
+# ---------------------------------------------------------------------------
+# Per-parameter scale extraction from meter_codes/<meter>.py
+#
+# Firmware applies two different kinds of multiply after decoding:
+#   1. Register scale  — raw 7 at ×0.1 is 0.7 A (belongs in format.scale)
+#   2. Unit conversion — float kW ×1000 to upload W to the backend
+#                        (NOT in format.scale; our units stay kW / kWh)
+#
+# Only linear scales are extracted. Conditional formulas (ICD PF) and
+# proprietary multi-word encodings (PM130 energy) are left alone.
+# ---------------------------------------------------------------------------
+
+KILO_PARAMS = {
+    "ACTIVE_POWER",
+    "REACTIVE_POWER",
+    "APPARENT_POWER",
+    "DEMAND_TOTAL",
+    "ENERGY_RECEIVED",
+    "ENERGY_DELIVERED",
+    "ENERGY_TOTAL",
+    "VAH_RECEIVED",
+    "VAH_R",
+    "VAH_Received",
+    "VARH_INDUCTIVE_RECEIVED",
+    "VARH_CAPACITIVE_RECEIVED",
+}
+
+PARAM_ALIASES = {
+    "VAH_Received": "VAH_RECEIVED",
+    "VAH_R": "VAH_RECEIVED",
+}
+
+# Prefer the real meter driver over sample/stub files that also assign the
+# same MeterCompany constant.
+COMPANY_FILE_PREFER = {
+    "L_T": "l_and_t_meter.py",
+    "SCHNEIDER": "schneider_6436_meter.py",
+}
+
+# Manual overrides for formulas that aren't a single linear scale, or where
+# the auto-pass cannot see through a multi-line return / config-gated path.
+# value None = "do not set a scale from firmware" (leave 1.0, stay unverified).
+MANUAL_SCALES: dict[str, dict[str, float | None]] = {
+    "PM130_PLUS": {
+        # proprietary 0–9999 range formula, not linear
+        "ENERGY_RECEIVED": None,
+        "VAH_RECEIVED": None,
+        "VARH_INDUCTIVE_RECEIVED": None,
+        "VARH_CAPACITIVE_RECEIVED": None,
+    },
+    "ICD_MFM_9012": {
+        # conditional: raw > 1000 ? (raw-1000)/1000 : raw/1000
+        "POWER_FACTOR": None,
+        # (v1+v2+v3)/3/30 — per-register scale is /30
+        "VOLTAGE_AVERAGE": 1.0 / 30.0,
+    },
+    "QUASAR": {
+        # multiline: return abs(energy * 0.01 * 1000)  # kWh → Wh
+        "ENERGY_RECEIVED": 0.01,
+        # voltage_average = sum/3; return voltage_average * 0.01
+        "VOLTAGE_AVERAGE": 0.01,
+    },
+    "EMFIS_HPL_VIE": {
+        # /10 then *1000 for Wh → display kWh scale 0.1
+        "ENERGY_RECEIVED": 0.1,
+        "POWER_FACTOR": 0.01,  # raw / 100
+    },
+    # Digi total current/voltage average three consecutive registers then an
+    # extra /10 — express the dominant per-register scale only.
+    "DIGI_250": {
+        "CURRENT_TOTAL": 0.001,
+        "VOLTAGE_AVERAGE": 0.1,
+        "R_PHASE_CURRENT": 0.001,
+        "Y_PHASE_CURRENT": 0.001,
+        "B_PHASE_CURRENT": 0.001,
+    },
+    "DIGI_620": {
+        "CURRENT_TOTAL": 0.001,
+        "VOLTAGE_AVERAGE": 0.1,
+    },
+}
+
+
+def _canon_param(name: str) -> str:
+    return PARAM_ALIASES.get(name, name)
+
+
+def _parse_factor_ops(expr: str) -> list[float]:
+    """Ordered * / factors from a RHS expression. Ignores bare identifiers."""
+    factors: list[float] = []
+    for m in re.finditer(
+        r"([*/])\s*(-?(?:0?\.\d+|\d+(?:\.\d+)?))(?=\s|$|,|\)|#)",
+        expr,
+    ):
+        op, num = m.group(1), float(m.group(2))
+        if op == "*":
+            factors.append(num)
+        elif num != 0.0:
+            factors.append(1.0 / num)
+    return factors
+
+
+def _dedupe_repeated_factors(factors: list[float]) -> list[float]:
+    """(a/1000 + b/1000 + c/1000)/3 → keep one 0.001, drop the averaging /3."""
+    out: list[float] = []
+    seen: set[float] = set()
+    for f in factors:
+        # Drop pure 3-phase averaging
+        if abs(f - 1.0 / 3.0) < 1e-12 or abs(f - 1.0 / 30.0) < 1e-12:
+            continue
+        key = round(f, 12)
+        if key in seen and abs(abs(f) - 1.0) > 1e-12:
+            # repeated identical scale from multi-register average
+            continue
+        seen.add(key)
+        out.append(f)
+    return out
+
+
+def _product(factors: list[float]) -> float:
+    p = 1.0
+    for f in factors:
+        p *= f
+    return p
+
+
+def _strip_kilo_unit_conversion(param: str, factors: list[float]) -> list[float]:
+    """Remove trailing ×1000 used to convert kW→W / kWh→Wh for the backend."""
+    p = _canon_param(param)
+    if p not in KILO_PARAMS and param not in KILO_PARAMS:
+        return factors
+    out = list(factors)
+    while out and abs(abs(out[-1]) - 1000.0) < 1e-9:
+        out.pop()
+    return out
+
+
+def _branch_window(text: str, start: int) -> str:
+    window = text[start : start + 700]
+    stop = re.search(
+        r"\n\s*elif\b|\n\s*else\s*:|\n\s*if\s+\(?\s*get_parameter|\n\s*if\s+isinstance",
+        window,
+    )
+    if stop:
+        window = window[: stop.start()]
+    return window
+
+
+def _method_return_factors(text: str, method_name: str) -> list[float]:
+    m = re.search(
+        rf"def\s+{re.escape(method_name)}\s*\([^)]*\)\s*:\s*\n(.*?)(?=\n    def\s|\Z)",
+        text,
+        re.S,
+    )
+    if not m:
+        return []
+    body = m.group(1)
+    # Last non-None return, allowing a parenthesised multiline expression.
+    returns = list(
+        re.finditer(
+            r"\breturn\s+((?:abs\s*\(\s*)?(?:[^\n#]+(?:\n[ \t]+[^\n#]+)*))",
+            body,
+        )
+    )
+    for ret in reversed(returns):
+        expr = ret.group(1)
+        if re.match(r"None\b", expr.strip()):
+            continue
+        return _dedupe_repeated_factors(_parse_factor_ops(expr))
+    return []
+
+
+def _dict_and_assign_factors(text: str, key: str) -> list[float]:
+    """Combine `key = decode/100` with `"key": key * 1000` when both exist."""
+    assign: list[float] = []
+    for m in re.finditer(rf"\b{re.escape(key)}\s*=\s*([^\n#]+)", text):
+        f = _dedupe_repeated_factors(_parse_factor_ops(m.group(1)))
+        if f:
+            assign = f
+    dict_f: list[float] = []
+    for m in re.finditer(rf'["\']({re.escape(key)})["\']\s*:\s*([^,\n}}]+)', text):
+        f = _dedupe_repeated_factors(_parse_factor_ops(m.group(2)))
+        if f:
+            dict_f = f
+    if assign and dict_f:
+        # dict multiplies the already-scaled variable (goblin energy path)
+        return assign + dict_f
+    return dict_f or assign
+
+
+def _last_append_factors(window: str) -> list[float]:
+    """Factors on the final append(...) in a branch — the value that ships."""
+    appends = list(
+        re.finditer(
+            r"append\s*\(\s*(?:round\s*\(\s*(?:abs\s*\(\s*)?)?(?:abs\s*\(\s*)?([^)\n,]+)",
+            window,
+        )
+    )
+    # Prefer the last non-zero literal append
+    for ap in reversed(appends):
+        expr = ap.group(1).strip()
+        if expr in ("0", "0.0", "round(0"):
+            continue
+        factors = _dedupe_repeated_factors(_parse_factor_ops(expr))
+        if factors:
+            # If append is `var / 10`, also fold the last assignment of var
+            bare = re.match(r"^([a-z][a-z0-9_]*)\s*$", expr)
+            if bare:
+                return factors  # no ops on bare name
+            var_m = re.match(r"^([a-z][a-z0-9_]*)\s*[*/]", expr)
+            if var_m:
+                var = var_m.group(1)
+                for am in re.finditer(rf"\b{re.escape(var)}\s*=\s*([^\n#]+)", window):
+                    af = _dedupe_repeated_factors(_parse_factor_ops(am.group(1)))
+                    if af:
+                        return af + factors
+            return factors
+        # bare variable with no ops in append itself
+        bare = re.match(r"^([a-z][a-z0-9_]*)$", expr)
+        if bare and bare.group(1) not in ("round", "abs", "float", "int"):
+            return ["__key__:" + bare.group(1)]  # type: ignore[list-item]
+    return []
+
+
+def discover_company_files(meter_codes_dir: Path) -> dict[str, Path]:
+    found: dict[str, Path] = {}
+    for p in sorted(meter_codes_dir.glob("*.py")):
+        try:
+            src = p.read_text()
+        except OSError:
+            continue
+        for m in re.finditer(
+            r"meter_company\s*=\s*general_constants\.MeterCompany\.(\w+)",
+            src,
+        ):
+            company = m.group(1)
+            prefer = COMPANY_FILE_PREFER.get(company)
+            if prefer and p.name == prefer:
+                found[company] = p
+            elif company not in found:
+                found[company] = p
+            elif prefer and found[company].name != prefer and "sample" in found[company].name:
+                found[company] = p
+            elif "sample" in found[company].name and "sample" not in p.name:
+                found[company] = p
+    return found
+
+
+def extract_scales_from_meter_code(text: str, company: str) -> dict[str, float]:
+    """PARAMETER_NAME → display-unit scale (after stripping kW→W conversions)."""
+    scales: dict[str, float] = {}
+
+    for m in re.finditer(
+        r"get_parameter_register\s*\(\s*[^,\n]+,\s*"
+        r"(?:parameter\s*=\s*)?(?:meter_register_constants\.)?([A-Za-z0-9_]+)",
+        text,
+    ):
+        param = m.group(1)
+        window = _branch_window(text, m.end())
+        factors: list = _last_append_factors(window)
+
+        # Method call: energy = self.get_data_from_energy_received_register()
+        method_m = re.search(r"=\s*self\.([A-Za-z0-9_]+)\s*\(", window)
+        if method_m and (
+            not factors
+            or (factors and isinstance(factors[0], str))
+            or factors == []
+        ):
+            # Prefer method return when the branch only appends the result
+            if not factors or (
+                isinstance(factors[0], str) and factors[0].startswith("__key__:")
+            ):
+                mf = _method_return_factors(text, method_m.group(1))
+                if mf:
+                    factors = mf
+
+        # Dict lookup: data["active_power"] * 100
+        dict_m = re.search(
+            r'([A-Za-z0-9_]+)\s*\[\s*["\']([a-z0-9_]+)["\']\s*\]\s*((?:[*/]\s*-?(?:0?\.\d+|\d+(?:\.\d+)?))*)',
+            window,
+        )
+        if dict_m and (
+            not factors
+            or (isinstance(factors[0], str) and factors[0].startswith("__key__:"))
+        ):
+            key = dict_m.group(2)
+            extra = _dedupe_repeated_factors(_parse_factor_ops(dict_m.group(3)))
+            base = _dict_and_assign_factors(text, key)
+            factors = base + extra if (base or extra) else ["__key__:" + key]
+
+        if not factors:
+            # assignment then append without ops on append line
+            assign_m = re.search(
+                r"\b([a-z][a-z0-9_]*)\s*=\s*([^\n#]+).{0,120}?"
+                r"append\s*\(\s*(?:round\s*\(\s*)?\1\b",
+                window,
+                re.S,
+            )
+            if assign_m:
+                factors = _dedupe_repeated_factors(_parse_factor_ops(assign_m.group(2)))
+
+        if not factors:
+            continue
+
+        if isinstance(factors[0], str) and str(factors[0]).startswith("__key__:"):
+            key = str(factors[0]).split(":", 1)[1]
+            factors = _dict_and_assign_factors(text, key)
+            if not factors:
+                # Bare key with no scale ops → identity
+                scales[_canon_param(param)] = 1.0
+                continue
+
+        factors = [float(f) for f in factors]
+        factors = _dedupe_repeated_factors(factors)
+        factors = _strip_kilo_unit_conversion(param, factors)
+        factors = [f for f in factors if abs(abs(f) - 1.0) > 1e-12]
+        scales[_canon_param(param)] = _product(factors) if factors else 1.0
+
+    # Manual overrides win.
+    for param, value in MANUAL_SCALES.get(company, {}).items():
+        if value is None:
+            scales.pop(param, None)
+        else:
+            scales[param] = value
+
+    return scales
+
+
+def load_all_firmware_scales(firmware_root: Path) -> dict[str, dict[str, float]]:
+    """company → {PARAM: scale} for every driver we can find."""
+    codes = firmware_root / "modbus_main" / "meter_codes"
+    if not codes.is_dir():
+        return {}
+    files = discover_company_files(codes)
+    out: dict[str, dict[str, float]] = {}
+    for company, path in files.items():
+        if company not in INCLUDE_COMPANIES and company != "L_T":
+            continue
+        try:
+            scales = extract_scales_from_meter_code(path.read_text(), company)
+        except OSError as exc:
+            print(f"  warn: cannot read {path}: {exc}")
+            continue
+        if scales:
+            out[company] = scales
+    return out
 
 
 def format_for(company: str) -> dict:
@@ -224,24 +593,27 @@ SIM_DEFAULTS = {
 def sim_defaults_for(key: str, fmt: dict):
     """(behavior, initial) for a parameter, or (None, None) if we have no idea.
 
-    Integer register types can't hold 0.95 or 49.9, so a range that would
-    quantise to nothing is lifted by the firmware's usual x1000 convention —
-    the raw register content a scaled meter would actually carry.
+    Values are always engineering units. The animate/encode path undoes
+    format.scale before writing raw registers, so a power-factor of 0.97 with
+    scale 0.001 becomes raw 970 on the wire. Only lift a range into "raw-looking"
+    numbers when the type is integer *and* scale is identity — otherwise 0.97
+    would quantise to 0 and the tag would look dead.
     """
     spec = SIM_DEFAULTS.get(key)
     if spec is None:
         return None, None
     kind, a, b = spec
     is_int = fmt["dataType"] in ("uint16", "int16", "uint32", "int32", "uint64", "int64")
+    identity_scale = abs(float(fmt.get("scale", 1.0)) - 1.0) < 1e-12
 
     if kind == "counter":
         step, start = a, b
-        if is_int and step < 1.0:
+        if is_int and identity_scale and step < 1.0:
             step = 1.0
         return {"kind": "counter", "step": step}, start
 
     lo, hi = a, b
-    if is_int and hi < 10.0:
+    if is_int and identity_scale and hi < 10.0:
         lo, hi = lo * 1000.0, hi * 1000.0
     return {"kind": "random", "min": lo, "max": hi}, None
 
@@ -574,7 +946,8 @@ def verified_flow() -> dict:
 
 
 def profile_from_firmware(
-    company: str, start: int, params: dict[str, int]
+    company: str, start: int, params: dict[str, int],
+    scales: dict[str, float] | None = None,
 ) -> dict | None:
     if not params:
         return None
@@ -591,7 +964,9 @@ def profile_from_firmware(
     claimed = {}  # wire address -> parameter that owns it
     kept = []  # (param, wire) in address order, after collision/reach filtering
     fmt = format_for(company)
+    scales = scales or {}
     span = 1 if fmt["dataType"] in ("uint16", "int16") else 2
+    scaled_n = 0
     for pname, doc_addr in sorted(params.items(), key=lambda x: x[1]):
         wire = doc_addr - 1  # METER_REG_OFFSET = 1
         if wire < start:
@@ -633,14 +1008,22 @@ def profile_from_firmware(
         point_fmt = fmt
         if width < span:
             point_fmt = dict(fmt)
-            point_fmt["dataType"] = (
-                "int16" if fmt["dataType"] in ("int32", "int16") else "uint16"
-            )
+            # One register wide → always uint16. int16 can't hold common
+            # scaled raws (frequency 50.0 at scale 0.001 is raw 50000).
+            point_fmt["dataType"] = "uint16"
             narrowed.append(pname)
         label, unit, group = PARAM_META.get(
             pname, (pname.replace("_", " ").title(), "", "other")
         )
         key = param_key(pname)
+        # Per-parameter scale from meter_codes, when the driver states one.
+        point_fmt = dict(point_fmt)
+        scale = scales.get(pname, scales.get(pname.upper()))
+        scale_known = scale is not None
+        if scale_known:
+            point_fmt["scale"] = float(scale)
+            if abs(float(scale) - 1.0) > 1e-12:
+                scaled_n += 1
         behavior, initial = sim_defaults_for(key, point_fmt)
         points.append(
             point(
@@ -650,7 +1033,9 @@ def profile_from_firmware(
                 point_fmt,
                 unit,
                 group,
-                True,  # unverified until reconciled with meter_codes/
+                # Scale taken from meter_codes counts as reconciled for that
+                # field; points with no driver evidence stay unverified.
+                not scale_known,
                 behavior,
                 initial,
             )
@@ -683,7 +1068,8 @@ def profile_from_firmware(
         "model": model,
         "description": (
             f"Auto-extracted from firmware meter_register_constants.py for {company}. "
-            "Default float32 CDAB; mark verified after checking meter_codes/."
+            "Per-parameter scale from meter_codes/ where the driver states one; "
+            "remaining points stay unverified."
         ),
         "source": {"kind": "built_in"},
         "function": (
@@ -733,13 +1119,21 @@ def main() -> int:
         path.write_text(json.dumps(prof, indent=2) + "\n")
         written.append(pid)
 
+    # Per-parameter scales from each meter_codes/<driver>.py
+    all_scales = load_all_firmware_scales(args.firmware)
+    print(
+        f"scales: {sum(len(v) for v in all_scales.values())} parameter entries "
+        f"across {len(all_scales)} drivers"
+    )
+
     # Firmware-derived electrical meters (skip L_T — covered by verified L&T).
     for company in sorted(INCLUDE_COMPANIES):
         if company == "L_T":
             continue
         start = starts.get(company, 0)
         params = maps.get(company, {})
-        prof = profile_from_firmware(company, start, params)
+        company_scales = all_scales.get(company, {})
+        prof = profile_from_firmware(company, start, params, company_scales)
         if not prof:
             print(f"skip {company}: no mappable params (start={start})")
             continue
@@ -749,7 +1143,16 @@ def main() -> int:
         path = args.out / f"{prof['id']}.json"
         path.write_text(json.dumps(prof, indent=2) + "\n")
         written.append(prof["id"])
-        print(f"wrote {prof['id']}: {len(prof['points'])} points @ {start}")
+        n_scaled = sum(
+            1
+            for pt in prof["points"]
+            if abs(float(pt["format"].get("scale", 1.0)) - 1.0) > 1e-12
+        )
+        n_verified = sum(1 for pt in prof["points"] if not pt.get("unverified"))
+        print(
+            f"wrote {prof['id']}: {len(prof['points'])} points @ {start} "
+            f"({n_scaled} non-1.0 scale, {n_verified} scale-sourced)"
+        )
 
     print(f"done: {len(written)} profiles → {args.out}")
     return 0

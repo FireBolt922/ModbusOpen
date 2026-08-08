@@ -2,7 +2,7 @@
   "id": "emfis-hpl-vie",
   "brand": "EMFIS",
   "model": "HPL VIE",
-  "description": "Auto-extracted from firmware meter_register_constants.py for EMFIS_HPL_VIE. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for EMFIS_HPL_VIE. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -22,13 +22,13 @@
       "label": "R Phase Current",
       "address": 839,
       "format": {
-        "dataType": "int16",
+        "dataType": "uint16",
         "wordOrder": "abcd",
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -41,13 +41,13 @@
       "label": "Y Phase Current",
       "address": 840,
       "format": {
-        "dataType": "int16",
+        "dataType": "uint16",
         "wordOrder": "abcd",
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -60,13 +60,13 @@
       "label": "B Phase Current",
       "address": 841,
       "format": {
-        "dataType": "int16",
+        "dataType": "uint16",
         "wordOrder": "abcd",
         "scale": 1.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
+      "unit": "A",
+      "group": "instantaneous",
       "unverified": true,
       "simBehavior": {
         "kind": "random",
@@ -81,12 +81,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
       "unit": "A",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 14.0,
@@ -100,16 +100,16 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 950.0,
-        "max": 990.0
+        "min": 0.95,
+        "max": 0.99
       }
     },
     {
@@ -117,14 +117,14 @@
       "label": "Demand Total",
       "address": 863,
       "format": {
-        "dataType": "int16",
+        "dataType": "uint16",
         "wordOrder": "abcd",
         "scale": 1.0,
         "offset": 0.0
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 48.0,
@@ -136,7 +136,7 @@
       "label": "Reactive Power",
       "address": 864,
       "format": {
-        "dataType": "int16",
+        "dataType": "uint16",
         "wordOrder": "abcd",
         "scale": 1.0,
         "offset": 0.0
@@ -162,7 +162,7 @@
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,
@@ -195,12 +195,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
       "unit": "kWh",
       "group": "energy",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0

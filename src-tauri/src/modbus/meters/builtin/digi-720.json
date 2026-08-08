@@ -2,7 +2,7 @@
   "id": "digi-720",
   "brand": "Digi",
   "model": "720",
-  "description": "Auto-extracted from firmware meter_register_constants.py for DIGI_720. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for DIGI_720. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -24,12 +24,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
       "unit": "V",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 225.0,
@@ -41,18 +41,18 @@
       "label": "R Phase Current",
       "address": 13,
       "format": {
-        "dataType": "int16",
+        "dataType": "uint16",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -60,18 +60,18 @@
       "label": "Y Phase Current",
       "address": 14,
       "format": {
-        "dataType": "int16",
+        "dataType": "uint16",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -81,16 +81,16 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -100,12 +100,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
       "unit": "A",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 14.0,
@@ -119,12 +119,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,
@@ -138,12 +138,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
       "unit": "kVAr",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 10.0,
@@ -157,12 +157,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 48.0,
@@ -174,18 +174,18 @@
       "label": "Power Factor",
       "address": 43,
       "format": {
-        "dataType": "int16",
+        "dataType": "uint16",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
       "unit": "",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 950.0,
-        "max": 990.0
+        "min": 0.95,
+        "max": 0.99
       }
     },
     {
@@ -195,12 +195,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "Hz",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 49.9,
@@ -214,12 +214,12 @@
       "format": {
         "dataType": "int32",
         "wordOrder": "abcd",
-        "scale": 1.0,
+        "scale": 0.1,
         "offset": 0.0
       },
       "unit": "kWh",
       "group": "energy",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0

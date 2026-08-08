@@ -2,7 +2,7 @@
   "id": "trinity-nf-29",
   "brand": "Trinity",
   "model": "NF-29",
-  "description": "Auto-extracted from firmware meter_register_constants.py for TRINITY_NF_29. Default float32 CDAB; mark verified after checking meter_codes/.",
+  "description": "Auto-extracted from firmware meter_register_constants.py for TRINITY_NF_29. Per-parameter scale from meter_codes/ where the driver states one; remaining points stay unverified.",
   "source": {
     "kind": "built_in"
   },
@@ -24,12 +24,12 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 10.0,
         "offset": 0.0
       },
       "unit": "kW",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 145.0,
@@ -43,12 +43,12 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 10.0,
         "offset": 0.0
       },
       "unit": "kVAr",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 10.0,
@@ -62,16 +62,16 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.001,
         "offset": 0.0
       },
       "unit": "",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 950.0,
-        "max": 990.0
+        "min": 0.95,
+        "max": 0.99
       }
     },
     {
@@ -81,12 +81,12 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "V",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 225.0,
@@ -100,12 +100,12 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "A",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 14.0,
@@ -119,12 +119,12 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 10.0,
         "offset": 0.0
       },
       "unit": "kWh",
       "group": "energy",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0
@@ -133,17 +133,17 @@
     },
     {
       "key": "varh_inductive_received",
-      "label": "Varh Inductive Received",
+      "label": "VARh Inductive Received",
       "address": 3033,
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 10.0,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "kVArh",
+      "group": "energy",
+      "unverified": false,
       "simBehavior": {
         "kind": "counter",
         "step": 1.0
@@ -157,12 +157,12 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
       "unit": "Hz",
       "group": "instantaneous",
-      "unverified": true,
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
         "min": 49.9,
@@ -176,16 +176,16 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -195,16 +195,16 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     },
     {
@@ -214,16 +214,16 @@
       "format": {
         "dataType": "uint16",
         "wordOrder": "cdab",
-        "scale": 1.0,
+        "scale": 0.01,
         "offset": 0.0
       },
-      "unit": "",
-      "group": "other",
-      "unverified": true,
+      "unit": "A",
+      "group": "instantaneous",
+      "unverified": false,
       "simBehavior": {
         "kind": "random",
-        "min": 4500.0,
-        "max": 5500.0
+        "min": 4.5,
+        "max": 5.5
       }
     }
   ]
