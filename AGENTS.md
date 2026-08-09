@@ -56,6 +56,7 @@ Invoke these; don't reimplement what they cover.
 | `modbus-protocol` | Any protocol-level work: framing, function codes, addressing, decoding, exceptions, timing |
 | `tauri-ipc` | Adding or changing a Rust↔UI command or event. Enforces the one-way-to-do-it contract |
 | `modbus-test-rig` | Spinning up a local slave or virtual serial pair to test against |
+| `meter-config` | Writing or fixing a `.mbmeter.json` meter pack by hand — building a register map from a datasheet to share with the team |
 | `milestone-check` | Before declaring any milestone complete |
 
 ## Conventions
