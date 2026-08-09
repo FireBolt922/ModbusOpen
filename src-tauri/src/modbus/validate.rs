@@ -2,7 +2,7 @@
 //! here saves a full timeout and gives a better message than the resulting
 //! remote exception would. See `docs/reference/function-codes.md`.
 
-use super::types::{PollConfig, RtuConfig, SimulatorConfig, TagBehavior, TcpConfig};
+use super::types::{MeterProfile, PollConfig, RtuConfig, SimulatorConfig, TagBehavior, TcpConfig};
 use crate::error::AppError;
 
 pub fn validate_tcp_config(config: &TcpConfig) -> Result<(), AppError> {
@@ -169,6 +169,93 @@ pub fn validate_simulator_config(config: &SimulatorConfig) -> Result<(), AppErro
         ));
     }
 
+    Ok(())
+}
+
+pub fn validate_meter_profile(profile: &MeterProfile) -> Result<(), AppError> {
+    if profile.id.trim().is_empty() {
+        return Err(AppError::InvalidConfig(
+            "meter profile id can't be empty".to_string(),
+        ));
+    }
+    // The id becomes a filename under the meter library folder, and an imported
+    // pack controls it entirely. Restrict it to a slug so a shared file can't
+    // escape the folder (`../../…`) or collide with a device path.
+    if !profile
+        .id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(AppError::InvalidConfig(format!(
+            "meter id '{}' must use only letters, digits, '-' and '_' (e.g. 'my-meter')",
+            profile.id
+        )));
+    }
+    if profile.brand.trim().is_empty() {
+        return Err(AppError::InvalidConfig(
+            "meter brand can't be empty".to_string(),
+        ));
+    }
+    if profile.model.trim().is_empty() {
+        return Err(AppError::InvalidConfig(
+            "meter model can't be empty".to_string(),
+        ));
+    }
+    validate_unit_id(profile.default_unit_id)?;
+
+    let max = profile.function.max_quantity();
+    if profile.block_count == 0 || profile.block_count > max {
+        return Err(AppError::InvalidConfig(format!(
+            "{:?} allows 1-{max} registers per request, got block count {}",
+            profile.function, profile.block_count
+        )));
+    }
+    if (profile.block_start as u32) + (profile.block_count as u32) > 0x1_0000 {
+        return Err(AppError::InvalidConfig(
+            "block start + count exceeds the 16-bit address space".to_string(),
+        ));
+    }
+    if profile.points.is_empty() {
+        return Err(AppError::InvalidConfig(
+            "meter profile must have at least one parameter".to_string(),
+        ));
+    }
+
+    let block_end = profile.block_start as u32 + profile.block_count as u32;
+    let mut keys = std::collections::HashSet::new();
+    for point in &profile.points {
+        if point.key.trim().is_empty() {
+            return Err(AppError::InvalidConfig(
+                "parameter key can't be empty".to_string(),
+            ));
+        }
+        if !keys.insert(point.key.clone()) {
+            return Err(AppError::InvalidConfig(format!(
+                "duplicate parameter key '{}'",
+                point.key
+            )));
+        }
+        if point.label.trim().is_empty() {
+            return Err(AppError::InvalidConfig(format!(
+                "parameter '{}' needs a label",
+                point.key
+            )));
+        }
+        let span = point.format.data_type.register_span();
+        if span == 0 {
+            return Err(AppError::InvalidConfig(format!(
+                "parameter '{}': string data type isn't supported in meter profiles",
+                point.key
+            )));
+        }
+        let point_end = point.address as u32 + span as u32;
+        if (point.address as u32) < profile.block_start as u32 || point_end > block_end {
+            return Err(AppError::InvalidConfig(format!(
+                "parameter '{}' at wire address {} (span {span}) falls outside the block [{}, {})",
+                point.key, point.address, profile.block_start, block_end
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -362,5 +449,99 @@ mod tests {
         let mut cfg = base_simulator_config();
         cfg.tcp_port = 0;
         assert!(validate_simulator_config(&cfg).is_err());
+    }
+
+    fn base_meter() -> MeterProfile {
+        use crate::modbus::types::{
+            DataFormat, DataType, MeterPoint, MeterPointGroup, MeterSource, WordOrder,
+        };
+        MeterProfile {
+            id: "test-meter".into(),
+            brand: "Test".into(),
+            model: "T1".into(),
+            description: String::new(),
+            source: MeterSource::User,
+            function: FunctionCode::ReadHoldingRegisters,
+            block_start: 100,
+            block_count: 20,
+            default_unit_id: 1,
+            suggested_rtu: None,
+            points: vec![MeterPoint {
+                key: "active_power".into(),
+                label: "Active Power".into(),
+                address: 100,
+                format: DataFormat {
+                    data_type: DataType::Float32,
+                    word_order: WordOrder::Cdab,
+                    scale: 1.0,
+                    offset: 0.0,
+                },
+                unit: "kW".into(),
+                group: MeterPointGroup::Instantaneous,
+                unverified: false,
+                sim_behavior: None,
+                sim_initial: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn accepts_a_well_formed_meter_profile() {
+        assert!(validate_meter_profile(&base_meter()).is_ok());
+    }
+
+    #[test]
+    fn rejects_point_outside_block() {
+        let mut p = base_meter();
+        p.points[0].address = 200;
+        assert!(validate_meter_profile(&p).is_err());
+    }
+
+    /// The id becomes a filename, and an imported `.mbmeter.json` controls it.
+    /// A shared file must not be able to write outside the meter library.
+    #[test]
+    fn rejects_ids_that_could_escape_the_library_folder() {
+        for bad in [
+            "../../../../tmp/pwned",
+            "..",
+            "a/b",
+            "a\\b",
+            "meter.json",
+            "with space",
+            "trailing.",
+        ] {
+            let mut p = base_meter();
+            p.id = bad.to_string();
+            assert!(
+                validate_meter_profile(&p).is_err(),
+                "id {bad:?} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_ordinary_slug_ids() {
+        for good in ["my-meter", "schneider-pm-5320", "meter_2", "abc123"] {
+            let mut p = base_meter();
+            p.id = good.to_string();
+            assert!(
+                validate_meter_profile(&p).is_ok(),
+                "id {good:?} should be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_oversized_block() {
+        let mut p = base_meter();
+        p.block_count = 126;
+        assert!(validate_meter_profile(&p).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_point_keys() {
+        let mut p = base_meter();
+        p.points.push(p.points[0].clone());
+        assert!(validate_meter_profile(&p).is_err());
     }
 }

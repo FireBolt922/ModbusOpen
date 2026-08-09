@@ -301,9 +301,18 @@ independent `pymodbus` client read 63, 64, 65, 66, 67 once a second, and confirm
 table counted up in step with no interaction — the `sim-update` push path handles ticks exactly
 like it handles external writes.
 
-**Not done yet:** Task 6 (device profile JSON), Task 7 (RTU server mode). No RTU setup screen for
-the simulator side either — TCP only for now, called out explicitly in the Setup screen's copy so
-it isn't mistaken for a gap nobody noticed.
+**Progress note 4 (2026-08-09):** The *user-authored* half of Task 6 is in: a meter builder
+(`/meters`) where you define a meter from any set of parameters, a scanner parameter view that
+labels a live read with those names, `meter_profile_to_simulator` to run a saved meter as a
+slave, and `.mbmeter.json` export/import for sharing one with a colleague. Meters are entirely
+user data under the OS app-data `meters/` folder — no profiles ship in the binary yet, so the
+library starts empty. The three shipped profiles named in Task 6
+([docs/reference/device-profiles.md](docs/reference/device-profiles.md)) are still to come and
+are what closes it.
+
+**Not done yet:** Task 6's shipped profile JSON, Task 7 (RTU server mode). No RTU setup screen
+for the simulator side either — TCP only for now, called out explicitly in the Setup screen's
+copy so it isn't mistaken for a gap nobody noticed.
 
 **Tasks**
 1. ~~Rust: `tokio-modbus` TCP server with a `ModbusStore` (coils, discretes, input regs, holding regs)
@@ -318,7 +327,8 @@ it isn't mistaken for a gap nobody noticed.
    `modbus/animate.rs`, verified live.
 5. ~~Live editable value table — writes from a connected master show up here in real time.~~ Done
    and verified live (see progress note above).
-6. **Device profiles** as JSON. Ship three built from the existing simulator scripts:
+6. **Device profiles** as JSON. The profile format, editor, simulator loading and shareable
+   packs are done; still to ship are the three built from the existing simulator scripts:
    `lt-electrical-meter.json`, `vfd.json`, `flow-meter.json`. See
    [docs/reference/device-profiles.md](docs/reference/device-profiles.md).
 7. RTU server mode over a serial port.
@@ -330,8 +340,8 @@ it isn't mistaken for a gap nobody noticed.
       differently from any other Modbus TCP client
 - [ ] `mbpoll` from the CLI reads correct values from it — `mbpoll` isn't installed in this
       session; the equivalent check was done with a `pymodbus` client instead
-- [ ] The L&T profile reproduces what `electrical_write_data.py` produces today — blocked on
-      Task 6 (device profiles don't exist yet)
+- [ ] The L&T profile reproduces what `electrical_write_data.py` produces today — the profile
+      format and simulator loading exist now; the L&T profile itself is still to be written
 - [x] Two slave IDs on one TCP port both respond correctly — `server.rs`'s
       `two_slave_ids_answer_independently_on_one_port` test
 - [x] A master writing updates the simulator's live table — verified live for FC06 (single
@@ -347,7 +357,8 @@ it isn't mistaken for a gap nobody noticed.
 1. Session save/load (`.mbopen` JSON) — connection + poll config + formats + column names.
 2. Recent connections on the home screen.
 3. Keyboard shortcuts: `Space` pause/resume poll, `Cmd/Ctrl+K` connect, `Cmd/Ctrl+L` frame log.
-4. Register naming — label addresses so the table reads "Active Power" not "40101".
+4. ~~Register naming — label addresses so the table reads "Active Power" not "40101".~~ Done
+   early with the meter builder (meter selector + named parameter view).
 5. Installers, app icon, README with screenshots, GitHub release.
 
 **Acceptance**

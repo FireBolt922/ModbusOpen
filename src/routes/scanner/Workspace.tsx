@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ConnectionPill } from "@/components/ConnectionPill";
 import { FormatPicker } from "@/components/FormatPicker";
 import { FrameLog, MAX_FRAMES } from "@/components/FrameLog";
+import { MeterSelector } from "@/components/MeterSelector";
+import { ParameterTable } from "@/components/ParameterTable";
 import { RegisterTable } from "@/components/RegisterTable";
 import { StatsBar } from "@/components/StatsBar";
 import { WritePanel } from "@/components/WritePanel";
@@ -18,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { tableToCsv } from "@/lib/format";
 import {
+  decodeMeterPoints,
   disconnect,
   errorMessage,
   onConnectionLost,
@@ -31,10 +34,13 @@ import {
 } from "@/lib/ipc";
 import type {
   DataFormat,
+  DecodedRegister,
   FrameLogEntry,
   FunctionCode,
+  MeterProfile,
   PollConfig,
 } from "@/lib/types";
+import { useMeterStore } from "@/store/meterStore";
 import { useScannerStore } from "@/store/scannerStore";
 
 const READ_FUNCTIONS: { value: FunctionCode; label: string }[] = [
@@ -72,6 +78,16 @@ export default function ScannerWorkspace() {
   const [framesPaused, setFramesPaused] = useState(false);
   const framesPausedRef = useRef(false);
   framesPausedRef.current = framesPaused;
+
+  const activeProfileId = useMeterStore((s) => s.activeProfileId);
+  const setActiveProfileId = useMeterStore((s) => s.setActiveProfileId);
+  const parameterView = useMeterStore((s) => s.parameterView);
+  const setParameterView = useMeterStore((s) => s.setParameterView);
+  const profiles = useMeterStore((s) => s.profiles);
+  const activeProfile =
+    profiles.find((p) => p.id === activeProfileId) ?? null;
+
+  const [pointRows, setPointRows] = useState<(DecodedRegister | null)[]>([]);
 
   const retuneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollConfigRef = useRef(pollConfig);
@@ -111,6 +127,73 @@ export default function ScannerWorkspace() {
       void Promise.all(unsubs).then((fns) => fns.forEach((fn) => fn()));
     };
   }, [applyPollResult, applyPollError, applyConnectionLost, navigate]);
+
+
+  // Reconstruct contiguous raw words from decoded table rows, then re-decode
+  // per-point with each meter's own format (Rust codec — never in TS).
+  useEffect(() => {
+    if (!activeProfile || !parameterView || rows.length === 0) {
+      setPointRows([]);
+      return;
+    }
+    const blockStart = activeProfile.blockStart;
+    const count = activeProfile.blockCount;
+    const regs = new Array<number>(count).fill(0);
+    for (const row of rows) {
+      const off = row.address - blockStart;
+      for (let i = 0; i < row.raw.length; i++) {
+        const idx = off + i;
+        if (idx >= 0 && idx < count) regs[idx] = row.raw[i]!;
+      }
+    }
+    let cancelled = false;
+    void decodeMeterPoints(blockStart, regs, activeProfile)
+      .then((decoded) => {
+        if (cancelled) return;
+        // Map by address for stable alignment with profile.points
+        const byAddr = new Map(decoded.map((d) => [d.address, d]));
+        setPointRows(
+          activeProfile.points.map((p) => byAddr.get(p.address) ?? null),
+        );
+      })
+      .catch((err) => {
+        if (!cancelled) setActionError(errorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rows, activeProfile, parameterView]);
+
+  function applyMeterProfile(profile: MeterProfile | null) {
+    setActiveProfileId(profile?.id ?? null);
+    if (!profile) {
+      setParameterView(false);
+      return;
+    }
+    setParameterView(true);
+    const defaultFormat: DataFormat = profile.points[0]?.format ?? {
+      dataType: "float32",
+      wordOrder: "cdab",
+      scale: 1,
+      offset: 0,
+    };
+    // Prefer float32 CDAB as the block default when any point uses it.
+    const floatPt = profile.points.find(
+      (p) => p.format.dataType === "float32",
+    );
+    const format = floatPt?.format ?? defaultFormat;
+    const next: PollConfig = {
+      ...pollConfigRef.current,
+      unitId: profile.defaultUnitId,
+      function: profile.function,
+      startAddress: profile.blockStart,
+      quantity: profile.blockCount,
+      format,
+    };
+    setPollConfigLocal(next);
+    pollConfigRef.current = next;
+    scheduleRetune(next);
+  }
 
   const pushConfig = useCallback(async (config: PollConfig) => {
     try {
@@ -257,6 +340,21 @@ export default function ScannerWorkspace() {
       </header>
 
       <section className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
+        <MeterSelector onSelect={applyMeterProfile} />
+
+        {activeProfile && (
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">View</Label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setParameterView(!parameterView)}
+            >
+              {parameterView ? "Raw addresses" : "Parameters"}
+            </Button>
+          </div>
+        )}
+
         <div className="flex flex-col gap-1">
           <Label htmlFor="unit" className="text-xs text-muted-foreground">
             Unit
@@ -417,15 +515,23 @@ export default function ScannerWorkspace() {
       )}
 
       <main className="flex min-h-0 flex-1 flex-col p-4">
-        <RegisterTable
-          rows={rows}
-          stale={rowsStale}
-          unitId={pollConfig.unitId}
-          format={pollConfig.format}
-          writable={!bitMode}
-          onWriteError={(msg) => setActionError(msg)}
-          onWritten={() => void handleReadOnce()}
-        />
+        {activeProfile && parameterView ? (
+          <ParameterTable
+            profile={activeProfile}
+            pointRows={pointRows}
+            stale={rowsStale}
+          />
+        ) : (
+          <RegisterTable
+            rows={rows}
+            stale={rowsStale}
+            unitId={pollConfig.unitId}
+            format={pollConfig.format}
+            writable={!bitMode}
+            onWriteError={(msg) => setActionError(msg)}
+            onWritten={() => void handleReadOnce()}
+          />
+        )}
       </main>
 
       <WritePanel

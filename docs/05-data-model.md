@@ -335,3 +335,27 @@ Every variant carries enough structure for the UI to render a heading plus an ac
 | 05 | Acknowledge | The device accepted the request but needs more time. |
 | 06 | Slave Device Busy | The device is busy. Increase the poll interval and retry. |
 | 0B | Gateway Target Failed | The gateway reached but got no reply from unit {unit}. Check the downstream serial bus. |
+
+## Meter pack (shareable)
+
+Envelope for one or many meter profiles (`.mbmeter.json`) — the file you hand a colleague:
+
+```json
+{
+  "version": 1,
+  "kind": "meter-pack",
+  "exportedBy": "ModbusOpen 0.1.0",
+  "exportedAt": "2026-08-07T10:00:00Z",
+  "profiles": [ /* MeterProfile[] — see modbus/types.rs MeterProfile */ ]
+}
+```
+
+Every meter is user-owned: profiles live as one JSON file per meter under the OS app-data
+`meters/` directory, named `<id>.json`. The id is validated as a slug (letters, digits, `-`,
+`_`) so an imported pack can't name a file outside that folder.
+
+On import, an id that already exists is reported as `duplicate_id` and the importer chooses
+per profile: `rename`, `overwrite`, or `skip`. `source` is optional in the file (defaults to
+`user`) and is re-tagged to `imported` on the way in, so the library can show where a meter
+came from.
+

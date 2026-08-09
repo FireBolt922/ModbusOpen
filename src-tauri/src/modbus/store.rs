@@ -182,6 +182,22 @@ impl ModbusStore {
         self.with_slave(unit_id, |s| read_words(&s.holding_registers, addr, qty))
     }
 
+    /// Simulator-internal seeding of the input-register block.
+    ///
+    /// Deliberately not a Modbus write path: no function code can write input
+    /// registers, so this must never be reachable from `SimulatorService`. It
+    /// exists so tag animation can populate the block that FC04 profiles read.
+    pub fn seed_input_registers(
+        &self,
+        unit_id: u8,
+        addr: Address,
+        values: &[u16],
+    ) -> Result<(), ExceptionCode> {
+        self.with_slave_mut(unit_id, |s| {
+            write_words(&mut s.input_registers, addr, values)
+        })
+    }
+
     pub fn write_single_coil(
         &self,
         unit_id: u8,

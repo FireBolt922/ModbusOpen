@@ -37,6 +37,7 @@ type SimulatorState = {
   snapshot: SimulatorSnapshot | null;
 
   setConfig: (patch: Partial<SimulatorConfig>) => void;
+  replaceConfig: (config: SimulatorConfig) => void;
   addSlave: () => void;
   removeSlave: (unitId: number) => void;
   updateSlave: (unitId: number, patch: Partial<SlaveSimConfig>) => void;
@@ -60,6 +61,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   snapshot: null,
 
   setConfig: (patch) => set((s) => ({ config: { ...s.config, ...patch } })),
+  replaceConfig: (config) => set({ config }),
 
   addSlave: () =>
     set((s) => {

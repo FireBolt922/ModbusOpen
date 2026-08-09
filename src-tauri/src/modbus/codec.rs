@@ -96,22 +96,28 @@ fn is_identity(format: &DataFormat) -> bool {
     format.scale == 1.0 && format.offset == 0.0
 }
 
-/// Scale an unsigned raw value. Skips the f64 round-trip at the identity
-/// scale (1.0, 0.0) — `u64 as f64` loses precision above 2^53, which would
-/// otherwise corrupt the top bits of every unscaled 64-bit read.
-fn scale_uint(raw: u64, format: &DataFormat) -> u64 {
+/// Apply a format's scale to a raw integer register value.
+///
+/// A *scaled* integer register carries a real quantity — raw 7 at scale 0.1 is
+/// 0.7 A — which no integer `TypedValue` can hold, so it decodes as a float.
+/// Returning `Uint(0)` there is how a live tag reads as dead.
+///
+/// At the identity scale (1.0, 0.0) the exact integer is kept, which also
+/// avoids the `u64 as f64` round trip that loses precision above 2^53 and
+/// would otherwise corrupt the top bits of every unscaled 64-bit read.
+fn scale_uint(raw: u64, format: &DataFormat) -> TypedValue {
     if is_identity(format) {
-        raw
+        TypedValue::Uint(raw)
     } else {
-        apply_scale_offset(raw as f64, format) as u64
+        TypedValue::Float(apply_scale_offset(raw as f64, format))
     }
 }
 
-fn scale_int(raw: i64, format: &DataFormat) -> i64 {
+fn scale_int(raw: i64, format: &DataFormat) -> TypedValue {
     if is_identity(format) {
-        raw
+        TypedValue::Int(raw)
     } else {
-        apply_scale_offset(raw as f64, format) as i64
+        TypedValue::Float(apply_scale_offset(raw as f64, format))
     }
 }
 
@@ -155,19 +161,16 @@ pub fn decode(regs: &[u16], format: &DataFormat) -> (TypedValue, Option<String>)
             (TypedValue::Bool(regs[0] != 0), None)
         }
         DataType::Uint16 | DataType::Hex16 | DataType::Binary16 => {
-            (TypedValue::Uint(scale_uint(regs[0] as u64, format)), None)
+            (scale_uint(regs[0] as u64, format), None)
         }
-        DataType::Int16 => (
-            TypedValue::Int(scale_int(regs[0] as i16 as i64, format)),
-            None,
-        ),
+        DataType::Int16 => (scale_int(regs[0] as i16 as i64, format), None),
         DataType::Uint32 => {
             let v = regs_to_u32([regs[0], regs[1]], format.word_order);
-            (TypedValue::Uint(scale_uint(v as u64, format)), None)
+            (scale_uint(v as u64, format), None)
         }
         DataType::Int32 => {
             let v = regs_to_u32([regs[0], regs[1]], format.word_order) as i32;
-            (TypedValue::Int(scale_int(v as i64, format)), None)
+            (scale_int(v as i64, format), None)
         }
         DataType::Float32 => {
             let v = regs_to_f32([regs[0], regs[1]], format.word_order);
@@ -184,11 +187,11 @@ pub fn decode(regs: &[u16], format: &DataFormat) -> (TypedValue, Option<String>)
         }
         DataType::Uint64 => {
             let v = regs_to_u64([regs[0], regs[1], regs[2], regs[3]], format.word_order);
-            (TypedValue::Uint(scale_uint(v, format)), None)
+            (scale_uint(v, format), None)
         }
         DataType::Int64 => {
             let v = regs_to_u64([regs[0], regs[1], regs[2], regs[3]], format.word_order) as i64;
-            (TypedValue::Int(scale_int(v, format)), None)
+            (scale_int(v, format), None)
         }
         DataType::Float64 => {
             let v = regs_to_f64([regs[0], regs[1], regs[2], regs[3]], format.word_order);
@@ -291,6 +294,36 @@ pub fn encode(value: &TypedValue, format: &DataFormat) -> Result<Vec<u16>, Strin
         (DataType::Float64, TypedValue::Float(v)) => {
             let raw = undo_scale_offset(*v, format);
             Ok(f64_to_regs(raw, format.word_order).to_vec())
+        }
+        // A scaled integer register decodes to a float (raw 7 at scale 0.1 is
+        // 0.7 A), so the write path has to take that float back. Undo the
+        // scale first, then round — 0.7 / 0.1 is 6.999… in binary.
+        (
+            DataType::Uint16
+            | DataType::Hex16
+            | DataType::Binary16
+            | DataType::Int16
+            | DataType::Uint32
+            | DataType::Int32
+            | DataType::Uint64
+            | DataType::Int64,
+            TypedValue::Float(v),
+        ) if !is_identity(format) => {
+            let raw = undo_scale_offset(*v, format).round();
+            let typed = if matches!(
+                format.data_type,
+                DataType::Int16 | DataType::Int32 | DataType::Int64
+            ) {
+                TypedValue::Int(raw as i64)
+            } else {
+                TypedValue::Uint(raw.max(0.0) as u64)
+            };
+            let identity = DataFormat {
+                scale: 1.0,
+                offset: 0.0,
+                ..*format
+            };
+            encode(&typed, &identity)
         }
         _ => Err(format!("can't encode {value:?} as {:?}", format.data_type)),
     }
@@ -546,6 +579,46 @@ mod tests {
 
     // ---- scale and offset apply after decode, scale first ----
 
+    /// The VFD profile is all 16-bit registers with implied decimals, so a
+    /// scaled integer must survive encode -> decode without losing its
+    /// fraction. Getting this wrong wrote 0 for every current on that meter.
+    #[test]
+    fn scaled_integer_values_round_trip() {
+        for (raw, scale, engineering) in [
+            (7u16, 0.1, 0.7),    // Input Current Ib
+            (13, 0.1, 1.3),      // Input Current Ia
+            (5179, 0.01, 51.79), // Running Frequency
+            (98, 0.01, 0.98),    // Input Power Factor
+            (1485, 1.0, 1485.0), // Running Speed (identity)
+        ] {
+            let format = DataFormat {
+                data_type: DataType::Uint16,
+                word_order: WordOrder::Cdab,
+                scale,
+                offset: 0.0,
+            };
+            let (decoded, err) = decode(&[raw], &format);
+            assert!(err.is_none(), "decode of {raw} @ {scale}: {err:?}");
+            let got = match decoded {
+                TypedValue::Float(f) => f,
+                TypedValue::Uint(u) => u as f64,
+                other => panic!("unexpected {other:?}"),
+            };
+            assert!(
+                (got - engineering).abs() < 1e-9,
+                "raw {raw} @ scale {scale} decoded to {got}, expected {engineering}"
+            );
+
+            // …and back to the same register.
+            let regs = encode(&decoded, &format).expect("re-encode");
+            assert_eq!(
+                regs,
+                vec![raw],
+                "re-encode of {engineering} @ scale {scale}"
+            );
+        }
+    }
+
     #[test]
     fn scale_then_offset_applied_after_decode() {
         // raw 5179, scale 0.01 -> 51.79 (VFD running-frequency example)
@@ -555,11 +628,23 @@ mod tests {
             scale: 0.01,
             offset: 0.0,
         };
+        // A scaled integer register holds a real quantity, so it decodes as a
+        // float. Truncating to 51 here was silently wrong — and it's what made
+        // scaled simulator tags read as 0 (0.7 A -> Uint(0)).
         let (v, _) = decode(&[5179], &format);
         match v {
-            TypedValue::Uint(u) => assert_eq!(u, 51), // truncated per Uint's integer semantics
-            other => panic!("expected Uint, got {other:?}"),
+            TypedValue::Float(f) => assert!((f - 51.79).abs() < 1e-9, "got {f}"),
+            other => panic!("expected Float, got {other:?}"),
         }
+
+        // At the identity scale the exact integer is still preserved.
+        let identity = DataFormat {
+            scale: 1.0,
+            offset: 0.0,
+            ..format
+        };
+        let (v, _) = decode(&[5179], &identity);
+        assert!(matches!(v, TypedValue::Uint(5179)), "got {v:?}");
 
         let format_f = DataFormat {
             data_type: DataType::Float32,

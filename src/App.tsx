@@ -1,5 +1,7 @@
 import { HashRouter, Route, Routes } from "react-router-dom";
 import Home from "@/routes/Home";
+import MeterEditorPage from "@/routes/meters/Editor";
+import MeterLibraryPage from "@/routes/meters/Library";
 import ScannerSetup from "@/routes/scanner/Setup";
 import ScannerWorkspace from "@/routes/scanner/Workspace";
 import SimulatorSetup from "@/routes/simulator/Setup";
@@ -14,6 +16,8 @@ function App() {
         <Route path="/scan/workspace" element={<ScannerWorkspace />} />
         <Route path="/simulate" element={<SimulatorSetup />} />
         <Route path="/simulate/workspace" element={<SimulatorWorkspace />} />
+        <Route path="/meters" element={<MeterLibraryPage />} />
+        <Route path="/meters/edit/:id" element={<MeterEditorPage />} />
       </Routes>
     </HashRouter>
   );

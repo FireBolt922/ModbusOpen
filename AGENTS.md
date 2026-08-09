@@ -40,6 +40,8 @@ src-tauri/
     codec.rs              Register <-> typed value. Word orders. HEAVILY TESTED.
     server.rs             Simulator (slave) side
     store.rs              Simulator datastore
+    meters/               Meter profile -> simulator config conversion
+  src/meters/             User meter library (app-data JSON, import/export)
   src/error.rs            One error enum -> user-facing strings
 docs/                     Design docs and protocol reference
 .claude/skills/           Skills — see below
