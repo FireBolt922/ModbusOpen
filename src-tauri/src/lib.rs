@@ -68,6 +68,7 @@ pub fn run() {
             commands::meters::preview_meter_import,
             commands::meters::commit_meter_import,
             commands::meters::meter_profile_to_simulator,
+            commands::meters::meter_read_plan,
             commands::meters::decode_meter_points,
             commands::meters::decode_tag_values,
         ])

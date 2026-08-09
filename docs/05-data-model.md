@@ -354,6 +354,37 @@ Every meter is user-owned: profiles live as one JSON file per meter under the OS
 `meters/` directory, named `<id>.json`. The id is validated as a slug (letters, digits, `-`,
 `_`) so an imported pack can't name a file outside that folder.
 
+### A profile has no block
+
+A `MeterProfile` is a list of parameters, each with its own 0-based wire address, format, and
+optionally its own function code. It does **not** carry a start address and a register count.
+
+That's deliberate. A Modbus request can only fetch a contiguous run of registers, up to 125 for
+FC03/FC04 — so a meter whose parameters sit at 100, 400 and 3000 can't be described by one
+block at all. Asking the user for a block meant either dropping the far parameters or refusing
+the meter. `modbus::meters::plan_reads` instead derives the requests from the parameters:
+
+- group by effective function code (a point's own, else the profile's),
+- sort by address,
+- extend the current request while the run stays inside the function's limit and the gap to the
+  next parameter is at most `MAX_WASTED_REGISTERS` (32) — a few spare registers are cheaper than
+  another round trip,
+- otherwise start a new request.
+
+The result is a `ReadBlock[]`, which is exactly what `PollConfig.blocks` holds. The editor shows
+that plan and the poll engine executes it, so there is one answer to "how is this meter read".
+
+### Poll config
+
+`PollConfig` carries `blocks: ReadBlock[]` rather than a single start/quantity. Raw scanning is
+the one-element case; one poll cycle issues every block in order and merges them into a single
+`PollResult`. If any request in a cycle fails, the cycle fails — a table showing three of four
+groups with the fourth silently missing is worse than an error.
+
+Because a result can have gaps, meter decoding takes `AddressedWord[]` (address/value pairs)
+rather than a contiguous array, and reports any parameter whose registers weren't in the last
+poll instead of decoding it from zeros.
+
 On import, an id that already exists is reported as `duplicate_id` and the importer chooses
 per profile: `rename`, `overwrite`, or `skip`. `source` is optional in the file (defaults to
 `user`) and is re-tagged to `imported` on the way in, so the library can show where a meter

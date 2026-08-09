@@ -301,6 +301,14 @@ independent `pymodbus` client read 63, 64, 65, 66, 67 once a second, and confirm
 table counted up in step with no interaction — the `sim-update` push path handles ticks exactly
 like it handles external writes.
 
+**Progress note 5 (2026-08-09):** Meter creation reworked after review. A profile no longer
+carries a register block: `plan_reads` derives the Modbus requests from the parameters, so a
+meter whose values sit far apart is read in several requests instead of being impossible to
+describe (the firmware extraction script reported ~87 such parameters). `PollConfig.blocks`
+carries that plan and one poll cycle issues all of it. The editor is four guided steps with a
+parameter preset catalogue, a datasheet-numbering toggle, plain-language data types, and the
+read plan shown back in words.
+
 **Progress note 4 (2026-08-09):** The *user-authored* half of Task 6 is in: a meter builder
 (`/meters`) where you define a meter from any set of parameters, a scanner parameter view that
 labels a live read with those names, `meter_profile_to_simulator` to run a saved meter as a

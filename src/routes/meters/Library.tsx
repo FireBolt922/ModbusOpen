@@ -258,8 +258,8 @@ export default function MeterLibraryPage() {
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                   <p className="text-xs text-muted-foreground">
-                    {p.points.length} parameters · wire {p.blockStart}×
-                    {p.blockCount} · unit {p.defaultUnitId}
+                    {p.points.length} parameter
+                    {p.points.length === 1 ? "" : "s"} · unit {p.defaultUnitId}
                   </p>
                   {p.description && (
                     <p className="line-clamp-2 text-xs text-muted-foreground">

@@ -4,10 +4,10 @@ use tauri::{AppHandle, State};
 
 use crate::error::AppError;
 use crate::meters::library::MeterLibrary;
-use crate::modbus::meters::profile_to_simulator_config;
+use crate::modbus::meters::{plan_reads, profile_to_simulator_config};
 use crate::modbus::types::{
-    DecodedRegister, MeterImportChoice, MeterImportPreview, MeterProfile, SimulatorConfig,
-    TagConfig, TypedValue,
+    AddressedWord, DecodedRegister, MeterImportChoice, MeterImportPreview, MeterProfile, ReadBlock,
+    SimulatorConfig, TagConfig, TypedValue,
 };
 use crate::modbus::validate::validate_meter_profile;
 use crate::AppState;
@@ -129,51 +129,66 @@ pub async fn meter_profile_to_simulator(
     Ok(cfg)
 }
 
-/// Decode a block of raw register words as named meter points.
+/// The Modbus requests needed to read this meter once.
+///
+/// The editor shows this back to the user, and the scanner uses it as the poll
+/// plan, so both are looking at exactly what the poll engine will execute.
+#[tauri::command]
+pub fn meter_read_plan(profile: MeterProfile) -> Result<Vec<ReadBlock>, AppError> {
+    validate_meter_profile(&profile)?;
+    Ok(plan_reads(&profile))
+}
+
+/// Decode named meter points out of whatever the last poll actually returned.
+///
+/// Takes address/word pairs rather than a block, because a meter can be read
+/// in several requests with gaps between them — there is no single contiguous
+/// array to index into. A parameter whose registers weren't all in the last
+/// poll is reported as such rather than decoded from zeros.
 #[tauri::command]
 pub fn decode_meter_points(
-    block_start: u16,
-    registers: Vec<u16>,
     profile: MeterProfile,
+    words: Vec<AddressedWord>,
 ) -> Result<Vec<DecodedRegister>, AppError> {
     validate_meter_profile(&profile)?;
+    let available: std::collections::HashMap<u16, u16> =
+        words.into_iter().map(|w| (w.address, w.value)).collect();
+
     let mut out = Vec::with_capacity(profile.points.len());
     for point in &profile.points {
         let span = point.format.data_type.register_span() as usize;
-        let offset = point.address as isize - block_start as isize;
-        if offset < 0 {
-            out.push(DecodedRegister {
-                address: point.address,
-                span: span as u8,
-                raw: vec![],
-                value: TypedValue::Invalid,
-                decode_error: Some(format!(
-                    "point address {} is before block start {block_start}",
-                    point.address
-                )),
-            });
-            continue;
+        let mut chunk = Vec::with_capacity(span);
+        let mut missing = false;
+        for i in 0..span {
+            match point
+                .address
+                .checked_add(i as u16)
+                .and_then(|a| available.get(&a))
+            {
+                Some(word) => chunk.push(*word),
+                None => {
+                    missing = true;
+                    break;
+                }
+            }
         }
-        let start = offset as usize;
-        let end = start + span;
-        if end > registers.len() {
+        if missing {
             out.push(DecodedRegister {
                 address: point.address,
                 span: span as u8,
                 raw: vec![],
                 value: TypedValue::Invalid,
                 decode_error: Some(
-                    "not enough registers in the last poll for this parameter".to_string(),
+                    "not in the last poll — this parameter's registers weren't read".to_string(),
                 ),
             });
             continue;
         }
-        let chunk = &registers[start..end];
-        let (value, decode_error) = crate::modbus::codec::decode(chunk, &point.format);
+        let (value, decode_error) = crate::modbus::codec::decode(&chunk, &point.format);
         out.push(DecodedRegister {
             address: point.address,
             span: span as u8,
-            raw: chunk.to_vec(),
+            raw: chunk,
             value,
             decode_error,
         });

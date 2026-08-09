@@ -337,8 +337,6 @@ mod tests {
             description: String::new(),
             source: MeterSource::User,
             function: FunctionCode::ReadHoldingRegisters,
-            block_start: 0,
-            block_count: 10,
             default_unit_id: 1,
             suggested_rtu: None,
             points: vec![MeterPoint {
@@ -352,6 +350,7 @@ mod tests {
                     offset: 0.0,
                 },
                 unit: String::new(),
+                function: None,
                 group: MeterPointGroup::Other,
                 unverified: true,
                 sim_behavior: None,

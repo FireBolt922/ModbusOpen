@@ -4,6 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AddressedWord,
   AppError,
   ConnectionInfo,
   ConnectionLostEvent,
@@ -17,6 +18,7 @@ import type {
   PollConfig,
   PollErrorEvent,
   PollResult,
+  ReadBlock,
   RtuConfig,
   SerialPortInfo,
   SimulatorConfig,
@@ -307,16 +309,24 @@ export async function meterProfileToSimulator(
   });
 }
 
+/**
+ * Decode a meter's named parameters from whatever the last poll returned.
+ *
+ * Takes address/word pairs, not a block: a meter read in several requests has
+ * gaps, so there is no single contiguous array to index into.
+ */
 export async function decodeMeterPoints(
-  blockStart: number,
-  registers: number[],
   profile: MeterProfile,
+  words: AddressedWord[],
 ): Promise<DecodedRegister[]> {
-  return invoke<DecodedRegister[]>("decode_meter_points", {
-    blockStart,
-    registers,
-    profile,
-  });
+  return invoke<DecodedRegister[]>("decode_meter_points", { profile, words });
+}
+
+/** The Modbus requests needed to read this meter once. */
+export async function meterReadPlan(
+  profile: MeterProfile,
+): Promise<ReadBlock[]> {
+  return invoke<ReadBlock[]>("meter_read_plan", { profile });
 }
 
 export async function decodeTagValues(

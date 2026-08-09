@@ -179,15 +179,45 @@ pub struct ConnectionInfo {
     pub summary: String,
 }
 
+/// One Modbus read request: a function code, a start address, and how many
+/// items to ask for.
+///
+/// A request can only cover a contiguous run of registers, and only up to the
+/// function's limit. A meter whose parameters sit at 100, 400 and 3000 is
+/// therefore three requests, not one — which is why a poll carries a list of
+/// these rather than a single start/quantity pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadBlock {
+    pub function: FunctionCode,
+    pub start_address: WireAddress,
+    pub quantity: u16,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PollConfig {
     pub unit_id: u8,
-    pub function: FunctionCode,
-    pub start_address: WireAddress,
-    pub quantity: u16,
+    /// The requests issued, in order, once per poll cycle. Always at least
+    /// one; raw scanning is the one-element case.
+    pub blocks: Vec<ReadBlock>,
     pub interval_ms: u64,
+    /// How the raw register table decodes what comes back. Meter parameters
+    /// carry their own format and are decoded per point instead.
     pub format: DataFormat,
+}
+
+impl PollConfig {
+    /// The first request. Raw mode has exactly one, and the parts of the UI
+    /// that predate multi-block reads (the write panel's default address, the
+    /// bit-mode check) are asking about that one.
+    pub fn first_block(&self) -> ReadBlock {
+        self.blocks.first().copied().unwrap_or(ReadBlock {
+            function: FunctionCode::ReadHoldingRegisters,
+            start_address: 0,
+            quantity: 1,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -199,6 +229,17 @@ pub struct PollResult {
     pub latency_ms: f64,
     pub registers: Vec<DecodedRegister>,
     pub stats: PollStats,
+}
+
+/// One register's worth of raw data at a known address.
+///
+/// A poll that issued several requests comes back as a set of these rather
+/// than one array, since the addresses in between were never read.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressedWord {
+    pub address: WireAddress,
+    pub value: u16,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -483,6 +524,11 @@ pub struct MeterPoint {
     pub format: DataFormat,
     #[serde(default)]
     pub unit: String,
+    /// Which read function this parameter lives behind. Almost every meter
+    /// answers on one function, so this defaults to the profile's; a device
+    /// that splits input and holding registers sets it per parameter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<FunctionCode>,
     #[serde(default = "default_point_group")]
     pub group: MeterPointGroup,
     #[serde(default)]
@@ -509,9 +555,8 @@ pub struct MeterProfile {
     /// Optional in the file so a hand-written profile can be imported as-is.
     #[serde(default)]
     pub source: MeterSource,
+    /// The read function used by any parameter that doesn't override it.
     pub function: FunctionCode,
-    pub block_start: WireAddress,
-    pub block_count: u16,
     pub default_unit_id: u8,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggested_rtu: Option<RtuDefaults>,

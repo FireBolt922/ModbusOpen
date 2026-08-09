@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { FormatPicker } from "@/components/FormatPicker";
+import { ParameterRow } from "@/components/meters/ParameterRow";
+import { PresetPicker } from "@/components/meters/PresetPicker";
+import { ReadPlanSummary } from "@/components/meters/ReadPlanSummary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,81 +15,34 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  ADDRESS_BASES,
+  functionForBase,
+  type AddressBase,
+} from "@/lib/addressing";
+import {
   errorMessage,
   getMeterProfile,
   listMeterProfiles,
   saveMeterProfile,
 } from "@/lib/ipc";
-import type {
-  DataFormat,
-  FunctionCode,
-  MeterPoint,
-  MeterPointGroup,
-  MeterProfile,
-  MeterSource,
-  TagBehavior,
-} from "@/lib/types";
+import { customPoint, pointFromPreset, type ParameterPreset } from "@/lib/meterPresets";
+import type { FunctionCode, MeterPoint, MeterProfile, MeterSource } from "@/lib/types";
+import { registerSpan } from "@/lib/valueKinds";
 import { useMeterStore } from "@/store/meterStore";
 import { useScannerStore } from "@/store/scannerStore";
+import { cn } from "@/lib/utils";
 
-const GROUPS: { value: MeterPointGroup; label: string }[] = [
-  { value: "instantaneous", label: "Instantaneous" },
-  { value: "energy", label: "Energy" },
-  { value: "harmonics", label: "Harmonics" },
-  { value: "diagnostics", label: "Diagnostics" },
-  { value: "other", label: "Other" },
-];
+const STEPS = ["Meter", "Parameters", "Read plan", "Simulation"] as const;
+type Step = 0 | 1 | 2 | 3;
 
-const DEFAULT_FORMAT: DataFormat = {
-  dataType: "float32",
-  wordOrder: "cdab",
-  scale: 1,
-  offset: 0,
-};
-
-const BEHAVIORS: { value: TagBehavior["kind"] | "none"; label: string }[] = [
-  { value: "none", label: "Not simulated" },
-  { value: "static", label: "Static" },
-  { value: "random", label: "Random" },
-  { value: "ramp", label: "Ramp" },
-  { value: "sine", label: "Sine" },
-  { value: "counter", label: "Counter" },
-];
-
-function defaultBehaviorFor(kind: TagBehavior["kind"]): TagBehavior {
-  switch (kind) {
-    case "static":
-      return { kind: "static" };
-    case "random":
-      return { kind: "random", min: 0, max: 100 };
-    case "ramp":
-      return { kind: "ramp", min: 0, max: 100, step: 1 };
-    case "sine":
-      return { kind: "sine", min: 0, max: 100, periodS: 10 };
-    case "counter":
-      return { kind: "counter", step: 1 };
-  }
-}
-
-/**
- * A new parameter animates by default.
- *
- * A point with no `simBehavior` produces no simulator tag, so "Load in
- * simulator" would serve a legitimate zero for it — indistinguishable on
- * screen from a simulator that failed to start.
- */
-function emptyPoint(): MeterPoint {
-  return {
-    key: "",
-    label: "",
-    address: 0,
-    format: { ...DEFAULT_FORMAT },
-    unit: "",
-    group: "instantaneous",
-    unverified: true,
-    simBehavior: { kind: "random", min: 0, max: 100 },
-    simInitial: 0,
-  };
+/** Brand + model -> a filename-safe id, so nobody has to invent a slug. */
+function slugify(brand: string, model: string): string {
+  const raw = `${brand} ${model}`.trim().toLowerCase();
+  const slug = raw
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return slug || "my-meter";
 }
 
 function emptyProfile(): MeterProfile {
@@ -98,155 +53,58 @@ function emptyProfile(): MeterProfile {
     description: "",
     source: { kind: "user" },
     function: "read_holding_registers",
-    blockStart: 0,
-    blockCount: 10,
     defaultUnitId: 1,
-    points: [emptyPoint()],
+    points: [],
   };
 }
 
-function clientValidate(p: MeterProfile): string | null {
-  if (!p.id.trim()) return "Id can't be empty (use a slug like my-meter).";
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(p.id))
-    return "Id must be lowercase letters, digits, and hyphens.";
-  if (!p.brand.trim()) return "Brand can't be empty.";
-  if (!p.model.trim()) return "Model can't be empty.";
-  if (p.blockCount < 1 || p.blockCount > 125)
-    return "Block count must be 1–125 for holding-register reads.";
-  if (p.points.length === 0) return "Add at least one parameter.";
+/**
+ * Client-side checks, phrased for someone who has a datasheet in front of them
+ * rather than a protocol spec. Rust validates all of this again on save — this
+ * copy exists so the message arrives while the field is still on screen.
+ */
+function problemsFor(p: MeterProfile): { step: Step; message: string }[] {
+  const out: { step: Step; message: string }[] = [];
+  if (!p.brand.trim()) out.push({ step: 0, message: "Give the meter a brand." });
+  if (!p.model.trim()) out.push({ step: 0, message: "Give the meter a model." });
+  if (p.points.length === 0) {
+    out.push({ step: 1, message: "Add at least one parameter." });
+  }
+
   const keys = new Set<string>();
-  const end = p.blockStart + p.blockCount;
+  // Which parameter owns each register, per function code.
+  const owner = new Map<string, string>();
   for (const pt of p.points) {
-    if (!pt.key.trim()) return "Every parameter needs a key.";
-    if (keys.has(pt.key)) return `Duplicate parameter key '${pt.key}'.`;
+    const name = pt.label.trim() || pt.key || "a parameter";
+    if (!pt.label.trim()) {
+      out.push({ step: 1, message: `A parameter at address ${pt.address} needs a name.` });
+    }
+    if (keys.has(pt.key)) {
+      out.push({ step: 1, message: `Two parameters share the key "${pt.key}".` });
+    }
     keys.add(pt.key);
-    if (!pt.label.trim()) return `Parameter '${pt.key}' needs a label.`;
-    const span =
-      pt.format.dataType.includes("64")
-        ? 4
-        : pt.format.dataType.includes("32") || pt.format.dataType === "float32"
-          ? 2
-          : 1;
-    if (pt.address < p.blockStart || pt.address + span > end) {
-      return `Parameter '${pt.key}' at wire ${pt.address} falls outside the block [${p.blockStart}, ${end}).`;
+
+    const span = registerSpan(pt.format);
+    if (pt.address + span > 0x10000) {
+      out.push({
+        step: 1,
+        message: `${name} runs past the last register — check its address.`,
+      });
+    }
+    const fc = pt.function ?? p.function;
+    for (let i = 0; i < span; i += 1) {
+      const slot = `${fc}:${pt.address + i}`;
+      const prev = owner.get(slot);
+      if (prev && prev !== name) {
+        out.push({
+          step: 1,
+          message: `${prev} and ${name} both use register ${pt.address + i}. A ${span}-register value needs ${span} free registers.`,
+        });
+      }
+      owner.set(slot, name);
     }
   }
-  return null;
-}
-
-/**
- * Per-parameter simulator animation.
- *
- * Values here are in engineering units (231.4 V, 0.7 A) — Rust undoes the
- * parameter's own scale before writing the register, so a 0.1-scaled uint16
- * asked for 0.7 stores 7 and reads back as 0.7.
- */
-function SimulationFields({
-  point,
-  onChange,
-}: {
-  point: MeterPoint;
-  onChange: (patch: Partial<MeterPoint>) => void;
-}) {
-  const b = point.simBehavior;
-  const kind = b?.kind ?? "none";
-
-  return (
-    <div className="grid items-end gap-2 border-t border-border/60 pt-2 sm:grid-cols-4">
-      <div className="flex flex-col gap-1">
-        <Label className="text-xs">Simulate as</Label>
-        <Select
-          value={kind}
-          onValueChange={(v) =>
-            onChange(
-              v === "none"
-                ? { simBehavior: undefined }
-                : {
-                    simBehavior: defaultBehaviorFor(v as TagBehavior["kind"]),
-                  },
-            )
-          }
-        >
-          <SelectTrigger className="h-8" aria-label="Simulation behavior">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {BEHAVIORS.map((x) => (
-              <SelectItem key={x.value} value={x.value}>
-                {x.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {b?.kind === "static" && (
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs">Value</Label>
-          <NumberInput
-            allowDecimal
-            value={point.simInitial ?? 0}
-            onChange={(v) => onChange({ simInitial: v })}
-          />
-        </div>
-      )}
-
-      {(b?.kind === "random" || b?.kind === "ramp" || b?.kind === "sine") && (
-        <>
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs">Min</Label>
-            <NumberInput
-              allowDecimal
-              value={b.min}
-              onChange={(v) => onChange({ simBehavior: { ...b, min: v } })}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs">Max</Label>
-            <NumberInput
-              allowDecimal
-              value={b.max}
-              onChange={(v) => onChange({ simBehavior: { ...b, max: v } })}
-            />
-          </div>
-        </>
-      )}
-
-      {(b?.kind === "ramp" || b?.kind === "counter") && (
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs">Step</Label>
-          <NumberInput
-            allowDecimal
-            value={b.step}
-            onChange={(v) => onChange({ simBehavior: { ...b, step: v } })}
-          />
-        </div>
-      )}
-
-      {b?.kind === "sine" && (
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs">Period (s)</Label>
-          <NumberInput
-            min={0}
-            allowDecimal
-            value={b.periodS}
-            onChange={(v) => onChange({ simBehavior: { ...b, periodS: v } })}
-          />
-        </div>
-      )}
-
-      {b?.kind === "counter" && (
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs">Start at</Label>
-          <NumberInput
-            allowDecimal
-            value={point.simInitial ?? 0}
-            onChange={(v) => onChange({ simInitial: v })}
-          />
-        </div>
-      )}
-    </div>
-  );
+  return out;
 }
 
 export default function MeterEditorPage() {
@@ -257,8 +115,13 @@ export default function MeterEditorPage() {
   const pollConfig = useScannerStore((s) => s.pollConfig);
 
   const [profile, setProfile] = useState<MeterProfile>(emptyProfile);
+  const [base, setBase] = useState<AddressBase>("holding4x");
+  const [step, setStep] = useState<Step>(0);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [idTouched, setIdTouched] = useState(false);
   const isNew = !id || id === "new";
 
   useEffect(() => {
@@ -267,27 +130,30 @@ export default function MeterEditorPage() {
       return;
     }
     void getMeterProfile(id)
-      .then(setProfile)
+      .then((p) => {
+        setProfile(p);
+        setIdTouched(true);
+      })
       .catch((err) => setError(errorMessage(err)));
   }, [id, isNew]);
 
-  function patch(p: Partial<MeterProfile>) {
+  const problems = useMemo(() => problemsFor(profile), [profile]);
+  const blockingProblems = problems.filter((p) => p.step <= step);
+
+  const patch = useCallback((p: Partial<MeterProfile>) => {
     setProfile((prev) => ({ ...prev, ...p }));
-  }
+  }, []);
+
+  // The id is derived from brand and model until someone edits it by hand.
+  useEffect(() => {
+    if (!isNew || idTouched) return;
+    setProfile((prev) => ({ ...prev, id: slugify(prev.brand, prev.model) }));
+  }, [profile.brand, profile.model, isNew, idTouched]);
 
   function patchPoint(index: number, p: Partial<MeterPoint>) {
-    setProfile((prev) => {
-      const points = prev.points.map((pt, i) =>
-        i === index ? { ...pt, ...p } : pt,
-      );
-      return { ...prev, points };
-    });
-  }
-
-  function addPoint() {
     setProfile((prev) => ({
       ...prev,
-      points: [...prev.points, emptyPoint()],
+      points: prev.points.map((pt, i) => (i === index ? { ...pt, ...p } : pt)),
     }));
   }
 
@@ -298,56 +164,77 @@ export default function MeterEditorPage() {
     }));
   }
 
+  /**
+   * Put a new parameter after the last one, leaving room for its registers, so
+   * the common case (a datasheet listing consecutive values) needs no typing
+   * at all beyond picking what it is.
+   */
+  function nextFreeAddress(): number {
+    if (profile.points.length === 0) return 0;
+    return profile.points.reduce(
+      (max, pt) => Math.max(max, pt.address + registerSpan(pt.format)),
+      0,
+    );
+  }
+
+  function addPreset(preset: ParameterPreset | null) {
+    const keys = profile.points.map((p) => p.key);
+    const address = nextFreeAddress();
+    const point = preset
+      ? pointFromPreset(preset, address, keys)
+      : customPoint(address, keys);
+    setProfile((prev) => ({ ...prev, points: [...prev.points, point] }));
+    setPickerOpen(false);
+  }
+
   function captureFromPoll() {
     if (rows.length === 0) {
-      setError("No poll data yet — connect the scanner and read once first.");
+      setError(
+        "No poll data yet — connect the scanner and read once, then everything it read shows up here as parameters.",
+      );
       return;
     }
-    const points: MeterPoint[] = rows.map((r) => ({
-      key: `reg_${r.address}`,
-      label: `Register ${r.address}`,
-      address: r.address,
-      format: { ...pollConfig.format },
-      unit: "",
-      group: "other" as MeterPointGroup,
-      unverified: true,
-      simBehavior: { kind: "random" as const, min: 0, max: 100 },
-      simInitial: 0,
-    }));
-    // Only keep first of each address for multi-span already split rows
     const seen = new Set<number>();
-    const unique = points.filter((p) => {
-      if (seen.has(p.address)) return false;
-      seen.add(p.address);
-      return true;
-    });
+    const points: MeterPoint[] = [];
+    for (const r of rows) {
+      if (seen.has(r.address)) continue;
+      seen.add(r.address);
+      points.push({
+        key: `reg_${r.address}`,
+        label: `Register ${r.address}`,
+        address: r.address,
+        format: { ...pollConfig.format },
+        unit: "",
+        group: "other",
+        unverified: true,
+        simBehavior: { kind: "random", min: 0, max: 100 },
+        simInitial: 50,
+      });
+    }
+    const first = pollConfig.blocks[0];
     patch({
-      blockStart: pollConfig.startAddress,
-      blockCount: pollConfig.quantity,
-      function: pollConfig.function as FunctionCode,
+      function: (first?.function ?? "read_holding_registers") as FunctionCode,
       defaultUnitId: pollConfig.unitId,
-      points: unique.length ? unique : [emptyPoint()],
+      points,
     });
     setError(null);
+    setNotice(`Added ${points.length} parameters from the last poll — rename the ones you care about.`);
   }
 
   async function handleSave() {
-    const msg = clientValidate(profile);
-    if (msg) {
-      setError(msg);
+    if (problems.length > 0) {
+      setStep(problems[0]!.step);
+      setError(problems[0]!.message);
       return;
     }
     setBusy(true);
     setError(null);
     try {
       const source: MeterSource =
-        profile.source.kind === "imported"
-          ? profile.source
-          : { kind: "user" };
-      const saved = await saveMeterProfile({ ...profile, source });
+        profile.source.kind === "imported" ? profile.source : { kind: "user" };
+      await saveMeterProfile({ ...profile, source });
       setProfiles(await listMeterProfiles());
       navigate("/meters");
-      void saved;
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -355,17 +242,18 @@ export default function MeterEditorPage() {
     }
   }
 
+  const simulated = profile.points.filter((p) => p.simBehavior).length;
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-6 py-10">
-      <div className="flex items-center justify-between gap-3">
+    <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 px-6 py-10">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-heading font-semibold">
-            {isNew ? "New meter" : "Edit meter"}
+          <h1 className="font-heading text-2xl font-semibold">
+            {isNew ? "New meter" : `Edit ${profile.brand} ${profile.model}`}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Addresses are 0-based wire. Decoding stays in Rust — pick type and
-            word order carefully. Each parameter's simulation setting is what
-            the simulator animates when you load this meter.
+            Tell ModbusOpen what the meter measures and where. It works out how
+            to read it.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => navigate("/meters")}>
@@ -373,179 +261,287 @@ export default function MeterEditorPage() {
         </Button>
       </div>
 
+      <nav className="flex flex-wrap gap-1" aria-label="Steps">
+        {STEPS.map((name, i) => {
+          const active = i === step;
+          const hasProblem = problems.some((p) => p.step === i);
+          return (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setStep(i as Step)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm transition-colors",
+                active
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted",
+              )}
+            >
+              <span className="tabular-nums opacity-60">{i + 1}.</span> {name}
+              {hasProblem && !active && (
+                <span className="ml-1.5 text-destructive" aria-label="needs attention">
+                  •
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
       {error && (
         <p className="text-sm text-destructive" role="alert">
           {error}
         </p>
       )}
+      {notice && !error && (
+        <p className="text-sm text-muted-foreground" role="status">
+          {notice}
+        </p>
+      )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <Label>Id (slug)</Label>
-          <Input
-            value={profile.id}
-            disabled={!isNew}
-            onChange={(e) =>
-              patch({ id: e.target.value.toLowerCase().replace(/\s+/g, "-") })
-            }
-            placeholder="my-custom-meter"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label>Default unit ID</Label>
-          <NumberInput
-            min={1}
-            max={247}
-            value={profile.defaultUnitId}
-            onChange={(v) => patch({ defaultUnitId: v })}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label>Brand</Label>
-          <Input
-            value={profile.brand}
-            onChange={(e) => patch({ brand: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label>Model</Label>
-          <Input
-            value={profile.model}
-            onChange={(e) => patch({ model: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1 sm:col-span-2">
-          <Label>Description</Label>
-          <Input
-            value={profile.description}
-            onChange={(e) => patch({ description: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label>Block start (wire)</Label>
-          <NumberInput
-            min={0}
-            max={65535}
-            value={profile.blockStart}
-            onChange={(v) => patch({ blockStart: v })}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label>Block count</Label>
-          <NumberInput
-            min={1}
-            max={125}
-            value={profile.blockCount}
-            onChange={(v) => patch({ blockCount: v })}
-          />
-        </div>
-      </div>
+      {step === 0 && (
+        <section className="flex flex-col gap-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <Label>Brand</Label>
+              <Input
+                autoFocus
+                value={profile.brand}
+                placeholder="Schneider"
+                onChange={(e) => patch({ brand: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Model</Label>
+              <Input
+                value={profile.model}
+                placeholder="PM 5320"
+                onChange={(e) => patch({ model: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <Label>What is it for? (optional)</Label>
+              <Input
+                value={profile.description}
+                placeholder="Main incomer, panel 3"
+                onChange={(e) => patch({ description: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Slave / unit ID</Label>
+              <NumberInput
+                min={1}
+                max={247}
+                value={profile.defaultUnitId}
+                onChange={(v) => patch({ defaultUnitId: v })}
+              />
+              <p className="text-xs text-muted-foreground">
+                The device's address on the bus. Usually 1.
+              </p>
+            </div>
+          </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={captureFromPoll}>
-          Capture from current poll
-        </Button>
-        <Button variant="outline" size="sm" onClick={addPoint}>
-          Add parameter
-        </Button>
-      </div>
-
-      <div className="flex flex-col gap-4">
-        {profile.points.map((pt, i) => (
-          <div
-            key={i}
-            className="flex flex-col gap-2 rounded-lg border border-border p-3"
-          >
-            <div className="grid gap-2 sm:grid-cols-3">
+          <details className="rounded-lg border border-border p-3">
+            <summary className="cursor-pointer text-sm font-medium">
+              Advanced
+            </summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1">
-                <Label className="text-xs">Key</Label>
+                <Label>Saved as (id)</Label>
                 <Input
-                  className="h-8"
-                  value={pt.key}
-                  onChange={(e) =>
-                    patchPoint(i, {
-                      key: e.target.value
-                        .toLowerCase()
-                        .replace(/\s+/g, "_"),
-                    })
-                  }
+                  value={profile.id}
+                  disabled={!isNew}
+                  onChange={(e) => {
+                    setIdTouched(true);
+                    patch({
+                      id: e.target.value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"),
+                    });
+                  }}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Filename for this meter. Generated from brand and model.
+                </p>
               </div>
               <div className="flex flex-col gap-1">
-                <Label className="text-xs">Label</Label>
-                <Input
-                  className="h-8"
-                  value={pt.label}
-                  onChange={(e) => patchPoint(i, { label: e.target.value })}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs">Unit</Label>
-                <Input
-                  className="h-8"
-                  value={pt.unit}
-                  onChange={(e) => patchPoint(i, { unit: e.target.value })}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs">Wire address</Label>
-                <NumberInput
-                  min={0}
-                  max={65535}
-                  value={pt.address}
-                  onChange={(v) => patchPoint(i, { address: v })}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs">Group</Label>
+                <Label>Read with</Label>
                 <Select
-                  value={pt.group}
-                  onValueChange={(v) =>
-                    patchPoint(i, { group: v as MeterPointGroup })
-                  }
+                  value={profile.function}
+                  onValueChange={(v) => patch({ function: v as FunctionCode })}
                 >
-                  <SelectTrigger className="h-8">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {GROUPS.map((g) => (
-                      <SelectItem key={g.value} value={g.value}>
-                        {g.label}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="read_holding_registers">
+                      Holding registers (FC03)
+                    </SelectItem>
+                    <SelectItem value="read_input_registers">
+                      Input registers (FC04)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="flex items-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => removePoint(i)}
-                >
-                  Remove
-                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Default for every parameter. Individual ones can differ.
+                </p>
               </div>
             </div>
-            <FormatPicker
-              format={pt.format}
-              onChange={(format) => patchPoint(i, { format })}
-            />
-            <SimulationFields
-              point={pt}
-              onChange={(p) => patchPoint(i, p)}
-            />
+          </details>
+        </section>
+      )}
+
+      {step === 1 && (
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">
+                Addresses on your datasheet look like
+              </Label>
+              <Select
+                value={base}
+                onValueChange={(v) => {
+                  const next = v as AddressBase;
+                  setBase(next);
+                  const implied = functionForBase(next);
+                  if (implied) patch({ function: implied as FunctionCode });
+                }}
+              >
+                <SelectTrigger className="w-56">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ADDRESS_BASES.map((b) => (
+                    <SelectItem key={b.value} value={b.value}>
+                      {b.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {ADDRESS_BASES.find((b) => b.value === base)?.hint}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={captureFromPoll}>
+                Capture from last poll
+              </Button>
+              <Button size="sm" onClick={() => setPickerOpen(true)}>
+                Add parameter
+              </Button>
+            </div>
           </div>
-        ))}
+
+          {profile.points.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center">
+              <p className="text-sm font-medium">No parameters yet</p>
+              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                Add what the meter measures — voltage, current, energy — and
+                type the address from its datasheet. Nothing else is required.
+              </p>
+              <Button className="mt-4" size="sm" onClick={() => setPickerOpen(true)}>
+                Add the first parameter
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="hidden grid-cols-[minmax(9rem,1.4fr)_8rem_minmax(10rem,1.2fr)_2.5rem] gap-x-3 px-3 text-xs font-medium tracking-wide text-muted-foreground uppercase sm:grid">
+                <div>Parameter</div>
+                <div>Address</div>
+                <div>Reads as</div>
+                <div />
+              </div>
+              {profile.points.map((pt, i) => (
+                <ParameterRow
+                  key={i}
+                  point={pt}
+                  base={base}
+                  defaultFunction={profile.function}
+                  onChange={(p) => patchPoint(i, p)}
+                  onRemove={() => removePoint(i)}
+                />
+              ))}
+            </div>
+          )}
+
+          {problems.filter((p) => p.step === 1).length > 0 && (
+            <ul className="flex flex-col gap-1 rounded-lg border border-destructive/40 p-3">
+              {problems
+                .filter((p) => p.step === 1)
+                .map((p, i) => (
+                  <li key={i} className="text-sm text-destructive">
+                    {p.message}
+                  </li>
+                ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {step === 2 && <ReadPlanSummary profile={profile} base={base} />}
+
+      {step === 3 && (
+        <section className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-sm font-medium">Simulation</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              These values are what the simulator serves when you run this meter
+              as a device. {simulated} of {profile.points.length} parameters are
+              simulated.
+            </p>
+          </div>
+          {simulated === 0 && profile.points.length > 0 && (
+            <p className="text-sm text-destructive">
+              Nothing is simulated — running this meter would serve zeros for
+              every parameter.
+            </p>
+          )}
+          <div className="flex flex-col gap-2">
+            {profile.points.map((pt, i) => (
+              <ParameterRow
+                key={i}
+                point={pt}
+                base={base}
+                defaultFunction={profile.function}
+                mode="simulation"
+                onChange={(p) => patchPoint(i, p)}
+                onRemove={() => removePoint(i)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="flex items-center justify-between gap-2 border-t border-border pt-4">
+        <Button
+          variant="ghost"
+          disabled={step === 0}
+          onClick={() => setStep((s) => Math.max(0, s - 1) as Step)}
+        >
+          Back
+        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate("/meters")}>
+            Cancel
+          </Button>
+          {step < 3 ? (
+            <Button
+              disabled={blockingProblems.length > 0}
+              onClick={() => setStep((s) => Math.min(3, s + 1) as Step)}
+            >
+              Next
+            </Button>
+          ) : (
+            <Button disabled={busy} onClick={() => void handleSave()}>
+              {busy ? "Saving…" : "Save meter"}
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => navigate("/meters")}>
-          Cancel
-        </Button>
-        <Button disabled={busy} onClick={() => void handleSave()}>
-          {busy ? "Saving…" : "Save"}
-        </Button>
-      </div>
+      <PresetPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={addPreset}
+      />
     </main>
   );
 }

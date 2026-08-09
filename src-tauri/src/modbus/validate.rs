@@ -63,18 +63,26 @@ pub fn validate_unit_id(unit_id: u8) -> Result<(), AppError> {
 pub fn validate_poll_config(config: &PollConfig) -> Result<(), AppError> {
     validate_unit_id(config.unit_id)?;
 
-    let max = config.function.max_quantity();
-    if config.quantity == 0 || config.quantity > max {
-        return Err(AppError::InvalidConfig(format!(
-            "{:?} allows 1-{max} registers per request, got {}",
-            config.function, config.quantity
-        )));
+    if config.blocks.is_empty() {
+        return Err(AppError::InvalidConfig(
+            "a poll needs at least one read request".to_string(),
+        ));
     }
 
-    if (config.start_address as u32) + (config.quantity as u32) > 0x1_0000 {
-        return Err(AppError::InvalidConfig(
-            "start address + quantity exceeds the 16-bit address space".to_string(),
-        ));
+    for block in &config.blocks {
+        let max = block.function.max_quantity();
+        if block.quantity == 0 || block.quantity > max {
+            return Err(AppError::InvalidConfig(format!(
+                "{:?} allows 1-{max} registers per request, got {}",
+                block.function, block.quantity
+            )));
+        }
+
+        if (block.start_address as u32) + (block.quantity as u32) > 0x1_0000 {
+            return Err(AppError::InvalidConfig(
+                "start address + quantity exceeds the 16-bit address space".to_string(),
+            ));
+        }
     }
 
     if config.interval_ms == 0 {
@@ -203,25 +211,17 @@ pub fn validate_meter_profile(profile: &MeterProfile) -> Result<(), AppError> {
     }
     validate_unit_id(profile.default_unit_id)?;
 
-    let max = profile.function.max_quantity();
-    if profile.block_count == 0 || profile.block_count > max {
-        return Err(AppError::InvalidConfig(format!(
-            "{:?} allows 1-{max} registers per request, got block count {}",
-            profile.function, profile.block_count
-        )));
-    }
-    if (profile.block_start as u32) + (profile.block_count as u32) > 0x1_0000 {
-        return Err(AppError::InvalidConfig(
-            "block start + count exceeds the 16-bit address space".to_string(),
-        ));
-    }
     if profile.points.is_empty() {
         return Err(AppError::InvalidConfig(
             "meter profile must have at least one parameter".to_string(),
         ));
     }
 
-    let block_end = profile.block_start as u32 + profile.block_count as u32;
+    // Which parameter owns each register, so two of them can't decode from
+    // partly the same bytes. A 2-register value typed at 6, 7 and 8 reads as
+    // plausible garbage rather than an error, which is far worse than a
+    // rejected profile.
+    let mut owner: std::collections::HashMap<(u8, u32), &str> = std::collections::HashMap::new();
     let mut keys = std::collections::HashSet::new();
     for point in &profile.points {
         if point.key.trim().is_empty() {
@@ -248,12 +248,29 @@ pub fn validate_meter_profile(profile: &MeterProfile) -> Result<(), AppError> {
                 point.key
             )));
         }
-        let point_end = point.address as u32 + span as u32;
-        if (point.address as u32) < profile.block_start as u32 || point_end > block_end {
+        let function = point.function.unwrap_or(profile.function);
+        let max = function.max_quantity();
+        if span as u16 > max {
             return Err(AppError::InvalidConfig(format!(
-                "parameter '{}' at wire address {} (span {span}) falls outside the block [{}, {})",
-                point.key, point.address, profile.block_start, block_end
+                "parameter '{}' needs {span} registers but {function:?} allows only {max} per request",
+                point.key
             )));
+        }
+        let point_end = point.address as u32 + span as u32;
+        if point_end > 0x1_0000 {
+            return Err(AppError::InvalidConfig(format!(
+                "parameter '{}' at address {} (span {span}) runs past the end of the 16-bit address space",
+                point.key, point.address
+            )));
+        }
+        let fc = function as u8;
+        for reg in point.address as u32..point_end {
+            if let Some(prev) = owner.insert((fc, reg), &point.key) {
+                return Err(AppError::InvalidConfig(format!(
+                    "parameters '{}' and '{}' both cover register {reg} — check their addresses and data types",
+                    prev, point.key
+                )));
+            }
         }
     }
     Ok(())
@@ -262,14 +279,17 @@ pub fn validate_meter_profile(profile: &MeterProfile) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modbus::types::ReadBlock;
     use crate::modbus::types::{DataFormat, FunctionCode};
 
     fn base_config() -> PollConfig {
         PollConfig {
             unit_id: 1,
-            function: FunctionCode::ReadHoldingRegisters,
-            start_address: 100,
-            quantity: 10,
+            blocks: vec![ReadBlock {
+                function: FunctionCode::ReadHoldingRegisters,
+                start_address: 100,
+                quantity: 10,
+            }],
             interval_ms: 1000,
             format: DataFormat::default(),
         }
@@ -278,21 +298,21 @@ mod tests {
     #[test]
     fn rejects_fc03_over_125_registers() {
         let mut cfg = base_config();
-        cfg.quantity = 126;
+        cfg.blocks[0].quantity = 126;
         assert!(validate_poll_config(&cfg).is_err());
     }
 
     #[test]
     fn accepts_fc03_at_125_registers() {
         let mut cfg = base_config();
-        cfg.quantity = 125;
+        cfg.blocks[0].quantity = 125;
         assert!(validate_poll_config(&cfg).is_ok());
     }
 
     #[test]
     fn rejects_zero_quantity() {
         let mut cfg = base_config();
-        cfg.quantity = 0;
+        cfg.blocks[0].quantity = 0;
         assert!(validate_poll_config(&cfg).is_err());
     }
 
@@ -307,8 +327,8 @@ mod tests {
     #[test]
     fn rejects_address_space_wraparound() {
         let mut cfg = base_config();
-        cfg.start_address = 65530;
-        cfg.quantity = 10;
+        cfg.blocks[0].start_address = 65530;
+        cfg.blocks[0].quantity = 10;
         assert!(validate_poll_config(&cfg).is_err());
     }
 
@@ -462,8 +482,6 @@ mod tests {
             description: String::new(),
             source: MeterSource::User,
             function: FunctionCode::ReadHoldingRegisters,
-            block_start: 100,
-            block_count: 20,
             default_unit_id: 1,
             suggested_rtu: None,
             points: vec![MeterPoint {
@@ -477,6 +495,7 @@ mod tests {
                     offset: 0.0,
                 },
                 unit: "kW".into(),
+                function: None,
                 group: MeterPointGroup::Instantaneous,
                 unverified: false,
                 sim_behavior: None,
@@ -490,11 +509,44 @@ mod tests {
         assert!(validate_meter_profile(&base_meter()).is_ok());
     }
 
+    /// A parameter far from the others is legal now — the read planner gives
+    /// it its own request. This is exactly the case the old block model
+    /// rejected, and the reason the editor no longer asks for a block.
     #[test]
-    fn rejects_point_outside_block() {
+    fn accepts_a_parameter_far_from_the_others() {
         let mut p = base_meter();
-        p.points[0].address = 200;
+        let mut far = p.points[0].clone();
+        far.key = "run_hours".into();
+        far.label = "Run hours".into();
+        far.address = 40_000;
+        p.points.push(far);
+        assert!(validate_meter_profile(&p).is_ok());
+    }
+
+    /// Two parameters must not decode from the same bytes. A 2-register value
+    /// at 100 and another at 101 read as plausible garbage, not an error.
+    #[test]
+    fn rejects_parameters_that_share_a_register() {
+        let mut p = base_meter();
+        let mut overlapping = p.points[0].clone();
+        overlapping.key = "other".into();
+        overlapping.label = "Other".into();
+        overlapping.address = p.points[0].address + 1; // float32 spans 2
+        p.points.push(overlapping);
         assert!(validate_meter_profile(&p).is_err());
+    }
+
+    /// The same address behind a different function code is a different
+    /// register, so it must not be reported as a collision.
+    #[test]
+    fn allows_the_same_address_on_a_different_function_code() {
+        let mut p = base_meter();
+        let mut other = p.points[0].clone();
+        other.key = "same_address_input".into();
+        other.label = "Input side".into();
+        other.function = Some(FunctionCode::ReadInputRegisters);
+        p.points.push(other);
+        assert!(validate_meter_profile(&p).is_ok());
     }
 
     /// The id becomes a filename, and an imported `.mbmeter.json` controls it.
@@ -532,9 +584,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_oversized_block() {
+    fn rejects_a_parameter_running_past_the_end_of_the_address_space() {
         let mut p = base_meter();
-        p.block_count = 126;
+        p.points[0].address = 65_535; // float32 needs two registers
         assert!(validate_meter_profile(&p).is_err());
     }
 

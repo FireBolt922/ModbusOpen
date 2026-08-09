@@ -369,13 +369,16 @@ mod tests {
     }
 
     /// A meter built in the editor and loaded into the simulator must actually
-    /// produce live data on the function code that profile reads. Both halves
-    /// of this have been broken before: profiles carried no tags at all (so
-    /// every register stayed 0), and FC04 profiles had a zero-sized
-    /// input-register block.
+    /// produce live data on the function code that profile reads, across every
+    /// request in its read plan. Three things have been broken here before:
+    /// profiles carried no tags at all (so every register stayed 0), FC04
+    /// profiles had a zero-sized input-register block, and a parameter too far
+    /// away to share a request was simply unreachable.
     #[tokio::test]
     async fn a_user_profile_simulates_live_data_on_its_own_function_code() {
-        use crate::modbus::meters::{profile_to_simulator_config, test_support::sample_profile};
+        use crate::modbus::meters::{
+            plan_reads, profile_to_simulator_config, test_support::sample_profile,
+        };
         use crate::modbus::types::FunctionCode;
 
         for function in [
@@ -420,36 +423,56 @@ mod tests {
             // Let the ticker run at least once.
             tokio::time::sleep(std::time::Duration::from_millis(80)).await;
 
+            // Read the meter exactly the way the scanner will: one request per
+            // planned block. The far-away parameter is only reachable because
+            // the plan has a second request for it.
+            let plan = plan_reads(&profile);
+            assert_eq!(plan.len(), 2, "{function:?}: expected a two-request plan");
+
             let mut client = connect(port, slave.unit_id).await;
-            let regs = client
-                .read_registers(
-                    profile.function,
-                    profile.block_start,
-                    profile.block_count,
-                    slave.unit_id,
-                )
-                .await
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "{function:?} read of {} regs at {} failed: {e:?}",
-                        profile.block_count, profile.block_start
+            let mut words: std::collections::HashMap<u16, u16> = std::collections::HashMap::new();
+            for block in &plan {
+                let regs = client
+                    .read_registers(
+                        block.function,
+                        block.start_address,
+                        block.quantity,
+                        slave.unit_id,
                     )
-                });
-            assert!(
-                regs.iter().any(|&r| r != 0),
-                "{function:?} block at {} is all zeros after animation",
-                profile.block_start
-            );
+                    .await
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "{function:?} read of {} regs at {} failed: {e:?}",
+                            block.quantity, block.start_address
+                        )
+                    });
+                assert!(
+                    regs.iter().any(|&r| r != 0),
+                    "{function:?} block at {} is all zeros after animation",
+                    block.start_address
+                );
+                for (i, word) in regs.iter().enumerate() {
+                    words.insert(block.start_address + i as u16, *word);
+                }
+            }
 
             // Per tag, not just per block: one data type could fail to encode
             // and the block would still look alive from the other tags. The
             // scaled uint16 current is the one that reads as a dead 0 when the
             // scale is applied twice.
             for tag in &slave.tags {
-                let span = tag.format.data_type.register_span() as usize;
-                let off = tag.address as usize - profile.block_start as usize;
-                let words = &regs[off..off + span];
-                let (value, err) = crate::modbus::codec::decode(words, &tag.format);
+                let span = tag.format.data_type.register_span();
+                let chunk: Vec<u16> = (0..span)
+                    .map(|i| {
+                        *words.get(&(tag.address + i as u16)).unwrap_or_else(|| {
+                            panic!(
+                                "tag '{}' at {} wasn't covered by the read plan",
+                                tag.name, tag.address
+                            )
+                        })
+                    })
+                    .collect();
+                let (value, err) = crate::modbus::codec::decode(&chunk, &tag.format);
                 assert!(
                     err.is_none(),
                     "tag '{}' decoded with an error: {err:?}",

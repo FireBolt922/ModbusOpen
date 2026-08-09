@@ -21,7 +21,7 @@ use super::frame::{
 };
 use super::types::{
     ConnectionLostEvent, DecodedRegister, Direction, FunctionCode, PollConfig, PollErrorEvent,
-    PollResult, PollStats, Transport, TypedValue, WriteRequest, WriteResult,
+    PollResult, PollStats, ReadBlock, Transport, TypedValue, WriteRequest, WriteResult,
 };
 use crate::error::AppError;
 
@@ -376,28 +376,37 @@ fn emit_tx_rx<R: Runtime>(
     );
 }
 
-async fn read_cycle<R: Runtime>(
+/// Issue one request and decode what comes back.
+///
+/// Errors carry no partial data: a cycle either produced every block or it
+/// failed, because a register table showing three of a meter's four groups
+/// with the fourth silently absent is worse than an error message.
+async fn read_one_block<R: Runtime>(
     app: &AppHandle<R>,
     client: &mut ModbusClient,
     cfg: &PollConfig,
+    block: ReadBlock,
     session_id: u64,
     transport: Transport,
-    sequence: &mut u64,
     stats: &mut StatsAccumulator,
-) -> Result<PollResult, ReadOutcome> {
-    let fc = fc_byte(cfg.function);
-    let tx_pdu = pdu_read_request(fc, cfg.start_address, cfg.quantity);
+) -> Result<(Vec<DecodedRegister>, f64), ReadOutcome> {
+    let fc = fc_byte(block.function);
+    let tx_pdu = pdu_read_request(fc, block.start_address, block.quantity);
     let started = Instant::now();
 
-    if is_bit_function(cfg.function) {
+    if is_bit_function(block.function) {
         match client
-            .read_bits(cfg.function, cfg.start_address, cfg.quantity, cfg.unit_id)
+            .read_bits(
+                block.function,
+                block.start_address,
+                block.quantity,
+                cfg.unit_id,
+            )
             .await
         {
             Ok(bits) => {
                 let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
-                let snapshot = stats.record_success(latency_ms);
-                *sequence += 1;
+                stats.record_success(latency_ms);
                 let rx_pdu = pdu_read_bits_response(fc, &bits);
                 emit_tx_rx(
                     app,
@@ -411,14 +420,7 @@ async fn read_cycle<R: Runtime>(
                     false,
                     None,
                 );
-                Ok(PollResult {
-                    session_id,
-                    sequence: *sequence,
-                    timestamp: Utc::now(),
-                    latency_ms,
-                    registers: decode_bits(&bits, cfg.start_address),
-                    stats: snapshot,
-                })
+                Ok((decode_bits(&bits, block.start_address), latency_ms))
             }
             Err(e) => {
                 if let ReadError::Exception { code, .. } = &e {
@@ -440,13 +442,17 @@ async fn read_cycle<R: Runtime>(
         }
     } else {
         match client
-            .read_registers(cfg.function, cfg.start_address, cfg.quantity, cfg.unit_id)
+            .read_registers(
+                block.function,
+                block.start_address,
+                block.quantity,
+                cfg.unit_id,
+            )
             .await
         {
             Ok(regs) => {
                 let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
-                let snapshot = stats.record_success(latency_ms);
-                *sequence += 1;
+                stats.record_success(latency_ms);
                 let rx_pdu = pdu_read_registers_response(fc, &regs);
                 emit_tx_rx(
                     app,
@@ -460,15 +466,10 @@ async fn read_cycle<R: Runtime>(
                     false,
                     None,
                 );
-                let registers = decode_block(&regs, cfg.start_address, &cfg.format);
-                Ok(PollResult {
-                    session_id,
-                    sequence: *sequence,
-                    timestamp: Utc::now(),
+                Ok((
+                    decode_block(&regs, block.start_address, &cfg.format),
                     latency_ms,
-                    registers,
-                    stats: snapshot,
-                })
+                ))
             }
             Err(e) => {
                 if let ReadError::Exception { code, .. } = &e {
@@ -489,6 +490,47 @@ async fn read_cycle<R: Runtime>(
             }
         }
     }
+}
+
+/// One poll cycle: every request in the config, in order, merged into a single
+/// result.
+///
+/// A meter whose parameters are scattered across the address space needs more
+/// than one request to read once — see `modbus::meters::plan_reads`. Raw
+/// scanning is the one-block case and behaves exactly as it did.
+async fn read_cycle<R: Runtime>(
+    app: &AppHandle<R>,
+    client: &mut ModbusClient,
+    cfg: &PollConfig,
+    session_id: u64,
+    transport: Transport,
+    sequence: &mut u64,
+    stats: &mut StatsAccumulator,
+) -> Result<PollResult, ReadOutcome> {
+    let mut registers: Vec<DecodedRegister> = Vec::new();
+    let mut total_latency_ms = 0.0;
+    let mut snapshot = None;
+
+    for block in &cfg.blocks {
+        let (mut rows, latency_ms) =
+            read_one_block(app, client, cfg, *block, session_id, transport, stats).await?;
+        registers.append(&mut rows);
+        total_latency_ms += latency_ms;
+        snapshot = Some(stats.stats.clone());
+    }
+
+    *sequence += 1;
+    Ok(PollResult {
+        session_id,
+        sequence: *sequence,
+        timestamp: Utc::now(),
+        // The whole cycle's time, not one request's — with several requests
+        // per cycle that's the number that tells you whether the poll
+        // interval is achievable.
+        latency_ms: total_latency_ms,
+        registers,
+        stats: snapshot.unwrap_or_else(|| stats.stats.clone()),
+    })
 }
 
 async fn write_cycle<R: Runtime>(
@@ -868,9 +910,11 @@ mod engine_tests {
         );
         let cfg = PollConfig {
             unit_id: 1,
-            function: FunctionCode::ReadHoldingRegisters,
-            start_address: 100,
-            quantity: 8,
+            blocks: vec![ReadBlock {
+                function: FunctionCode::ReadHoldingRegisters,
+                start_address: 100,
+                quantity: 8,
+            }],
             interval_ms: 50,
             format: float32_cdab_format(),
         };
@@ -902,6 +946,127 @@ mod engine_tests {
         );
     }
 
+    /// The scanner reading a meter whose parameters are scattered: one poll
+    /// cycle, several requests, every parameter present in one result.
+    ///
+    /// This runs against ModbusOpen's own simulator rather than an external
+    /// slave, so it always runs — and it exercises the exact path the meter
+    /// feature depends on: `plan_reads` -> `PollConfig.blocks` -> one
+    /// `PollResult` covering both ends of the address space.
+    #[tokio::test]
+    async fn one_cycle_issues_every_request_in_the_plan() {
+        use crate::modbus::server::SimulatorServer;
+        use crate::modbus::store::{ModbusStore, SlaveLayout};
+
+        let app = test_app();
+        let store = Arc::new(ModbusStore::new());
+        store.reset(&[(
+            1,
+            SlaveLayout {
+                coil_count: 0,
+                discrete_count: 0,
+                input_register_count: 0,
+                holding_register_count: 3010,
+            },
+        )]);
+        // Two islands of data with 2900 dead registers between them — far
+        // more than any single request can span.
+        store
+            .write_multiple_registers(1, 100, &[1, 2, 3, 4])
+            .unwrap();
+        store.write_multiple_registers(1, 3000, &[9, 9]).unwrap();
+
+        let server = SimulatorServer::bind(
+            "127.0.0.1:0".parse().unwrap(),
+            store,
+            app.handle().clone(),
+            1,
+        )
+        .await
+        .unwrap();
+        let port = server.tcp_port();
+
+        let client = ModbusClient::connect_tcp(&TcpConfig {
+            host: "127.0.0.1".into(),
+            port,
+            unit_id: 1,
+            timeout_ms: 1000,
+            retries: 1,
+        })
+        .await
+        .unwrap();
+
+        let results = collect_events(&app, "poll-result");
+        let frames = collect_events(&app, "frame");
+        let session = ScannerSession::spawn(
+            app.handle().clone(),
+            1,
+            Transport::Tcp,
+            "test".into(),
+            client,
+        );
+
+        let cfg = PollConfig {
+            unit_id: 1,
+            blocks: vec![
+                ReadBlock {
+                    function: FunctionCode::ReadHoldingRegisters,
+                    start_address: 100,
+                    quantity: 4,
+                },
+                ReadBlock {
+                    function: FunctionCode::ReadHoldingRegisters,
+                    start_address: 3000,
+                    quantity: 2,
+                },
+            ],
+            interval_ms: 50,
+            format: DataFormat {
+                data_type: DataType::Uint16,
+                word_order: WordOrder::Cdab,
+                scale: 1.0,
+                offset: 0.0,
+            },
+        };
+        session.send(PollCommand::SetConfig(cfg)).await.unwrap();
+        session.send(PollCommand::Start).await.unwrap();
+        assert!(wait_for(&results, 1).await, "expected a poll-result");
+        session.shutdown().await;
+        server.shutdown().await;
+
+        let payload = results.lock().unwrap()[0].clone();
+        let result: Value = serde_json::from_str(&payload).unwrap();
+        let registers = result["registers"].as_array().unwrap();
+        assert_eq!(
+            registers.len(),
+            6,
+            "one result must carry both blocks, got {registers:?}"
+        );
+
+        // The far block is present and correct, not zeros and not absent.
+        let far: Vec<&Value> = registers
+            .iter()
+            .filter(|r| r["address"].as_u64() == Some(3000) || r["address"].as_u64() == Some(3001))
+            .collect();
+        assert_eq!(far.len(), 2, "the second request's data is missing");
+        for row in far {
+            assert_eq!(row["value"]["value"].as_u64(), Some(9));
+        }
+        // And nothing invented data for the 2900 registers in between.
+        assert!(
+            !registers
+                .iter()
+                .any(|r| matches!(r["address"].as_u64(), Some(a) if (104..3000).contains(&a))),
+            "the gap between requests must not appear in the result"
+        );
+
+        // Two requests means two tx/rx pairs on the wire per cycle.
+        assert!(
+            frames.lock().unwrap().len() >= 4,
+            "expected a tx and rx frame for each of the two requests"
+        );
+    }
+
     #[tokio::test]
     async fn changing_unit_id_mid_poll_switches_devices_without_reconnect() {
         let Some(client) = connect_unit(1).await else {
@@ -920,9 +1085,11 @@ mod engine_tests {
         );
         let mut cfg = PollConfig {
             unit_id: 1,
-            function: FunctionCode::ReadHoldingRegisters,
-            start_address: 0,
-            quantity: 4,
+            blocks: vec![ReadBlock {
+                function: FunctionCode::ReadHoldingRegisters,
+                start_address: 0,
+                quantity: 4,
+            }],
             interval_ms: 50,
             format: DataFormat {
                 data_type: DataType::Uint16,
@@ -978,9 +1145,11 @@ mod engine_tests {
         );
         let bad_cfg = PollConfig {
             unit_id: 1,
-            function: FunctionCode::ReadHoldingRegisters,
-            start_address: 60_000,
-            quantity: 5,
+            blocks: vec![ReadBlock {
+                function: FunctionCode::ReadHoldingRegisters,
+                start_address: 60_000,
+                quantity: 5,
+            }],
             interval_ms: 50,
             format: DataFormat::default(),
         };
@@ -998,9 +1167,11 @@ mod engine_tests {
         // The session must still be alive: retuning to a valid range recovers.
         let good_cfg = PollConfig {
             unit_id: 1,
-            function: FunctionCode::ReadHoldingRegisters,
-            start_address: 0,
-            quantity: 4,
+            blocks: vec![ReadBlock {
+                function: FunctionCode::ReadHoldingRegisters,
+                start_address: 0,
+                quantity: 4,
+            }],
             interval_ms: 50,
             format: DataFormat::default(),
         };
@@ -1047,9 +1218,11 @@ mod engine_tests {
         let (tx, rx) = oneshot::channel();
         let cfg = PollConfig {
             unit_id: 1,
-            function: FunctionCode::ReadHoldingRegisters,
-            start_address: 150,
-            quantity: 1,
+            blocks: vec![ReadBlock {
+                function: FunctionCode::ReadHoldingRegisters,
+                start_address: 150,
+                quantity: 1,
+            }],
             interval_ms: 1000,
             format: DataFormat {
                 data_type: DataType::Uint16,
@@ -1090,9 +1263,11 @@ mod engine_tests {
         );
         let cfg = PollConfig {
             unit_id: 1,
-            function: FunctionCode::ReadHoldingRegisters,
-            start_address: 100,
-            quantity: 8,
+            blocks: vec![ReadBlock {
+                function: FunctionCode::ReadHoldingRegisters,
+                start_address: 100,
+                quantity: 8,
+            }],
             interval_ms: 100,
             format: float32_cdab_format(),
         };
@@ -1104,9 +1279,11 @@ mod engine_tests {
         // transaction id keeps incrementing regardless of the exception.
         let bad_cfg = PollConfig {
             unit_id: 1,
-            function: FunctionCode::ReadHoldingRegisters,
-            start_address: 60_000,
-            quantity: 5,
+            blocks: vec![ReadBlock {
+                function: FunctionCode::ReadHoldingRegisters,
+                start_address: 60_000,
+                quantity: 5,
+            }],
             interval_ms: 100,
             format: DataFormat::default(),
         };

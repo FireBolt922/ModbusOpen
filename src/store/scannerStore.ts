@@ -33,9 +33,13 @@ export const DEFAULT_RTU_CONFIG: RtuConfig = {
 
 export const DEFAULT_POLL_CONFIG: PollConfig = {
   unitId: 1,
-  function: "read_holding_registers",
-  startAddress: 100,
-  quantity: 8,
+  blocks: [
+    {
+      function: "read_holding_registers",
+      startAddress: 100,
+      quantity: 8,
+    },
+  ],
   intervalMs: 1000,
   format: {
     dataType: "float32",

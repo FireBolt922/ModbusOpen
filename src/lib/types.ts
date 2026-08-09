@@ -85,12 +85,22 @@ export type ConnectionStatus =
     }
   | { state: "error"; message: string; at: string };
 
-export type PollConfig = {
-  unitId: number;
+/**
+ * One Modbus read request. A request covers a contiguous run of registers up
+ * to the function's limit, so a meter with parameters far apart needs several.
+ */
+export type ReadBlock = {
   function: FunctionCode;
   startAddress: number;
   quantity: number;
+};
+
+export type PollConfig = {
+  unitId: number;
+  /** Issued in order, once per cycle. Raw scanning is the one-element case. */
+  blocks: ReadBlock[];
   intervalMs: number;
+  /** How the raw register table decodes what comes back. */
   format: DataFormat;
 };
 
@@ -244,12 +254,20 @@ export type RtuDefaults = {
   stopBits: number;
 };
 
+/** One register's raw value at a known address. */
+export type AddressedWord = {
+  address: number;
+  value: number;
+};
+
 export type MeterPoint = {
   key: string;
   label: string;
   address: number;
   format: DataFormat;
   unit: string;
+  /** Overrides the profile's function code for this parameter only. */
+  function?: FunctionCode;
   group: MeterPointGroup;
   unverified: boolean;
   simBehavior?: TagBehavior;
@@ -262,9 +280,8 @@ export type MeterProfile = {
   model: string;
   description: string;
   source: MeterSource;
+  /** Read function for any parameter that doesn't override it. */
   function: FunctionCode;
-  blockStart: number;
-  blockCount: number;
   defaultUnitId: number;
   suggestedRtu?: RtuDefaults;
   points: MeterPoint[];

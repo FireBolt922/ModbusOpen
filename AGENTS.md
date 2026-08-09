@@ -40,7 +40,7 @@ src-tauri/
     codec.rs              Register <-> typed value. Word orders. HEAVILY TESTED.
     server.rs             Simulator (slave) side
     store.rs              Simulator datastore
-    meters/               Meter profile -> simulator config conversion
+    meters/               Read planning (plan_reads) + profile -> simulator config
   src/meters/             User meter library (app-data JSON, import/export)
   src/error.rs            One error enum -> user-facing strings
 docs/                     Design docs and protocol reference
@@ -78,6 +78,8 @@ Invoke these; don't reimplement what they cover.
 
 **Addressing — the #1 source of bugs**
 - Internally, **always 0-based wire addresses**. No exceptions.
+- The meter editor asks which numbering the user's datasheet uses (40001 / 30001 / 1-based /
+  0-based) and converts on the way in — see `src/lib/addressing.ts`. It shows both numbers.
 - Convert to 1-based / 4xxxx notation only at the display layer.
 - The register table shows both columns, always. An addressing-base toggle changes which one is
   the input field's meaning, and it must be labelled unambiguously.
