@@ -101,7 +101,7 @@ is exactly what a scaled integer already does. The checker warns about this.
 ### 5. Check it
 
 ```bash
-python3 .claude/skills/meter-config/scripts/check_meter_pack.py <file>
+python3 .agents/skills/meter-config/scripts/check_meter_pack.py <file>
 ```
 
 This mirrors the app's own validation and read planner. If it passes, the import dialog

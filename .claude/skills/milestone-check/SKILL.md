@@ -85,8 +85,6 @@ M1: TCP scanner — connect, poll FC03, decode float32/uint32 across 4 word orde
 
 Polls a live device at 1 Hz with live retuning of unit ID, address, quantity,
 and interval. Codec has full test coverage against the reference vectors.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 ```
 
 Then start the next milestone — and only the next one.

@@ -44,12 +44,15 @@ src-tauri/
   src/meters/             User meter library (app-data JSON, import/export)
   src/error.rs            One error enum -> user-facing strings
 docs/                     Design docs and protocol reference
-.claude/skills/           Skills — see below
+.agents/skills/           Canonical, harness-neutral skills — see below
+.claude/skills/           Claude Code compatibility mirror of `.agents/skills/`
 ```
 
 ## Skills
 
-Invoke these; don't reimplement what they cover.
+Invoke these; don't reimplement what they cover. The canonical skill definitions live in
+`.agents/skills/`. Keep the matching `.claude/skills/` compatibility copies in sync whenever a
+skill changes.
 
 | Skill | When |
 |---|---|
