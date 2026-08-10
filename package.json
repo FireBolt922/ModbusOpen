@@ -9,6 +9,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "icons": "bash scripts/generate-icons.sh",
     "version:set": "node scripts/update-version.mjs"
   },
   "dependencies": {
