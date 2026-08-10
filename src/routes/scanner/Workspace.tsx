@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ConnectionPill } from "@/components/ConnectionPill";
 import { FormatPicker } from "@/components/FormatPicker";
 import { FrameLog, MAX_FRAMES } from "@/components/FrameLog";
+import { MeterSelector } from "@/components/MeterSelector";
+import { ParameterTable } from "@/components/ParameterTable";
 import { RegisterTable } from "@/components/RegisterTable";
 import { StatsBar } from "@/components/StatsBar";
 import { WritePanel } from "@/components/WritePanel";
@@ -18,7 +20,9 @@ import {
 } from "@/components/ui/select";
 import { tableToCsv } from "@/lib/format";
 import {
+  decodeMeterPoints,
   disconnect,
+  meterReadPlan,
   errorMessage,
   onConnectionLost,
   onFrame,
@@ -30,11 +34,16 @@ import {
   stopPoll,
 } from "@/lib/ipc";
 import type {
+  AddressedWord,
   DataFormat,
+  DecodedRegister,
   FrameLogEntry,
   FunctionCode,
+  MeterProfile,
   PollConfig,
+  ReadBlock,
 } from "@/lib/types";
+import { useMeterStore } from "@/store/meterStore";
 import { useScannerStore } from "@/store/scannerStore";
 
 const READ_FUNCTIONS: { value: FunctionCode; label: string }[] = [
@@ -72,6 +81,16 @@ export default function ScannerWorkspace() {
   const [framesPaused, setFramesPaused] = useState(false);
   const framesPausedRef = useRef(false);
   framesPausedRef.current = framesPaused;
+
+  const activeProfileId = useMeterStore((s) => s.activeProfileId);
+  const setActiveProfileId = useMeterStore((s) => s.setActiveProfileId);
+  const parameterView = useMeterStore((s) => s.parameterView);
+  const setParameterView = useMeterStore((s) => s.setParameterView);
+  const profiles = useMeterStore((s) => s.profiles);
+  const activeProfile =
+    profiles.find((p) => p.id === activeProfileId) ?? null;
+
+  const [pointRows, setPointRows] = useState<(DecodedRegister | null)[]>([]);
 
   const retuneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollConfigRef = useRef(pollConfig);
@@ -112,6 +131,83 @@ export default function ScannerWorkspace() {
     };
   }, [applyPollResult, applyPollError, applyConnectionLost, navigate]);
 
+
+  // Re-decode the last poll with each parameter's own format (Rust codec —
+  // never in TS). The rows can come from several requests with gaps between
+  // them, so they're flattened to address/word pairs rather than an array.
+  useEffect(() => {
+    if (!activeProfile || !parameterView || rows.length === 0) {
+      setPointRows([]);
+      return;
+    }
+    const words: AddressedWord[] = [];
+    for (const row of rows) {
+      for (let i = 0; i < row.raw.length; i++) {
+        words.push({ address: row.address + i, value: row.raw[i]! });
+      }
+    }
+    let cancelled = false;
+    void decodeMeterPoints(activeProfile, words)
+      .then((decoded) => {
+        if (cancelled) return;
+        // Decoded rows come back in profile order, one per parameter.
+        setPointRows(decoded);
+      })
+      .catch((err) => {
+        if (!cancelled) setActionError(errorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rows, activeProfile, parameterView]);
+
+  /**
+   * Point the poll at a meter: its unit id, its formats, and every request in
+   * its read plan. The plan comes from Rust so the scanner issues exactly the
+   * requests the meter editor showed.
+   */
+  async function applyMeterProfile(profile: MeterProfile | null) {
+    setActiveProfileId(profile?.id ?? null);
+    if (!profile) {
+      setParameterView(false);
+      return;
+    }
+    setParameterView(true);
+    try {
+      const blocks = await meterReadPlan(profile);
+      if (blocks.length === 0) {
+        setActionError(
+          `“${profile.brand} ${profile.model}” has no parameters to read.`,
+        );
+        return;
+      }
+      // The raw table needs one format; prefer a float32 point since that's
+      // what most meters use, falling back to the first parameter's.
+      const floatPt = profile.points.find(
+        (p) => p.format.dataType === "float32",
+      );
+      const format: DataFormat = floatPt?.format ??
+        profile.points[0]?.format ?? {
+          dataType: "float32",
+          wordOrder: "cdab",
+          scale: 1,
+          offset: 0,
+        };
+      const next: PollConfig = {
+        ...pollConfigRef.current,
+        unitId: profile.defaultUnitId,
+        blocks,
+        format,
+      };
+      setPollConfigLocal(next);
+      pollConfigRef.current = next;
+      scheduleRetune(next);
+      setActionError(null);
+    } catch (err) {
+      setActionError(errorMessage(err));
+    }
+  }
+
   const pushConfig = useCallback(async (config: PollConfig) => {
     try {
       await setPollConfig(config);
@@ -137,11 +233,30 @@ export default function ScannerWorkspace() {
   ) {
     setPollConfigLocal({ [key]: value } as Partial<PollConfig>);
     const next = { ...pollConfigRef.current, [key]: value };
-    // Auto-switch format to bool for coil/discrete reads.
-    if (key === "function" && isBitFc(value as FunctionCode)) {
+    pollConfigRef.current = next;
+    scheduleRetune(next);
+  }
+
+  /**
+   * Edit the raw-mode request. The poll bar drives one request; a meter's
+   * multi-request plan is set by `applyMeterProfile` instead, and touching
+   * these controls replaces it with a single block on purpose — that's what
+   * dropping back to raw addresses means.
+   */
+  function updateBlock(patch: Partial<ReadBlock>) {
+    const current = pollConfigRef.current.blocks[0] ?? {
+      function: "read_holding_registers" as FunctionCode,
+      startAddress: 0,
+      quantity: 8,
+    };
+    const block: ReadBlock = { ...current, ...patch };
+    const next: PollConfig = { ...pollConfigRef.current, blocks: [block] };
+    // Coils and discrete inputs come back as bits, so the raw table has to
+    // read them as bools or every row shows a meaningless number.
+    if (patch.function && isBitFc(patch.function)) {
       next.format = { ...next.format, dataType: "bool" };
-      setPollConfigLocal({ format: next.format });
     }
+    setPollConfigLocal(next);
     pollConfigRef.current = next;
     scheduleRetune(next);
   }
@@ -229,7 +344,14 @@ export default function ScannerWorkspace() {
     URL.revokeObjectURL(url);
   }
 
-  const bitMode = isBitFc(pollConfig.function);
+  // The poll bar edits one request. With a meter selected the plan may have
+  // several; the bar shows the first and editing it drops back to raw mode.
+  const block: ReadBlock = pollConfig.blocks[0] ?? {
+    function: "read_holding_registers",
+    startAddress: 0,
+    quantity: 8,
+  };
+  const bitMode = isBitFc(block.function);
   const maxQty = bitMode ? 2000 : 125;
 
   if (!connection) {
@@ -257,6 +379,40 @@ export default function ScannerWorkspace() {
       </header>
 
       <section className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
+        <MeterSelector onSelect={(p) => void applyMeterProfile(p)} />
+
+        {activeProfile && pollConfig.blocks.length > 1 && (
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Reads</Label>
+            <span
+              className="text-sm"
+              title="This meter's parameters are too far apart to fetch in one request"
+            >
+              {pollConfig.blocks.length} requests per poll
+            </span>
+          </div>
+        )}
+
+        {activeProfile && (
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">View</Label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                // Going back to the parameter view re-applies the meter's full
+                // read plan: raw mode may have replaced it with the single
+                // block the poll bar edits, which wouldn't reach every
+                // parameter of a multi-request meter.
+                if (!parameterView) void applyMeterProfile(activeProfile);
+                else setParameterView(false);
+              }}
+            >
+              {parameterView ? "Raw addresses" : "Parameters"}
+            </Button>
+          </div>
+        )}
+
         <div className="flex flex-col gap-1">
           <Label htmlFor="unit" className="text-xs text-muted-foreground">
             Unit
@@ -274,8 +430,8 @@ export default function ScannerWorkspace() {
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Function</Label>
           <Select
-            value={pollConfig.function}
-            onValueChange={(v) => updateField("function", v as FunctionCode)}
+            value={block.function}
+            onValueChange={(v) => updateBlock({ function: v as FunctionCode })}
           >
             <SelectTrigger className="w-44" aria-label="Function code">
               <SelectValue />
@@ -299,8 +455,8 @@ export default function ScannerWorkspace() {
             min={0}
             max={65535}
             className="w-28"
-            value={pollConfig.startAddress}
-            onChange={(v) => updateField("startAddress", v)}
+            value={block.startAddress}
+            onChange={(v) => updateBlock({ startAddress: v })}
           />
         </div>
 
@@ -313,8 +469,8 @@ export default function ScannerWorkspace() {
             min={1}
             max={maxQty}
             className="w-20"
-            value={pollConfig.quantity}
-            onChange={(v) => updateField("quantity", v)}
+            value={block.quantity}
+            onChange={(v) => updateBlock({ quantity: v })}
             onClamp={(bounded, typed) =>
               setActionError(
                 `${typed} exceeds the ${maxQty}-${bitMode ? "bit" : "register"} limit for a single request — clamped to ${bounded}.`,
@@ -417,22 +573,30 @@ export default function ScannerWorkspace() {
       )}
 
       <main className="flex min-h-0 flex-1 flex-col p-4">
-        <RegisterTable
-          rows={rows}
-          stale={rowsStale}
-          unitId={pollConfig.unitId}
-          format={pollConfig.format}
-          writable={!bitMode}
-          onWriteError={(msg) => setActionError(msg)}
-          onWritten={() => void handleReadOnce()}
-        />
+        {activeProfile && parameterView ? (
+          <ParameterTable
+            profile={activeProfile}
+            pointRows={pointRows}
+            stale={rowsStale}
+          />
+        ) : (
+          <RegisterTable
+            rows={rows}
+            stale={rowsStale}
+            unitId={pollConfig.unitId}
+            format={pollConfig.format}
+            writable={!bitMode}
+            onWriteError={(msg) => setActionError(msg)}
+            onWritten={() => void handleReadOnce()}
+          />
+        )}
       </main>
 
       <WritePanel
         open={showWrite}
         onClose={() => setShowWrite(false)}
         unitId={pollConfig.unitId}
-        defaultAddress={pollConfig.startAddress}
+        defaultAddress={block.startAddress}
         defaultFormat={pollConfig.format}
         onWritten={() => void handleReadOnce()}
       />

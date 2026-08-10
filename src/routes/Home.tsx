@@ -119,6 +119,19 @@ export default function Home() {
             </CardDescription>
           </CardHeader>
         </Card>
+
+        <Card
+          className="cursor-pointer transition-colors hover:bg-muted/50 sm:col-span-2"
+          onClick={() => navigate("/meters")}
+        >
+          <CardHeader>
+            <CardTitle>Meters</CardTitle>
+            <CardDescription>
+              Build a meter from your own parameters, simulate it, and share it
+              with a colleague.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
 
       <SerialPortPanel />

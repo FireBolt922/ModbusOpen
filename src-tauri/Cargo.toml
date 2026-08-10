@@ -32,6 +32,7 @@ tracing-subscriber = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 tokio-util = "0.7"
 fastrand = "2"
+tauri-plugin-dialog = "2.7.2"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

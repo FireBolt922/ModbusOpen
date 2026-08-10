@@ -1,0 +1,65 @@
+{
+  "skill_name": "meter-config",
+  "note": "Datasheets are reconstructed from real Carbon Minus firmware meter maps; the original profile is the answer key.",
+  "evals": [
+    {
+      "id": 0,
+      "name": "lt-far-apart-holding",
+      "prompt": "Our team keeps re-typing this L&T meter into ModbusOpen by hand every time someone sets up a new site. I've pasted the register list out of the installation manual [...]. Can you build me a meter config file I can send round so everyone just imports it instead?",
+      "tests": "4xxxx holding-register table (subtract 40001). Mixed float32 and one uint32. Run Hours sits 54 registers past the cluster, so the meter must plan as two requests. Word order is not stated \u2014 cdab is the acceptable default.",
+      "truth": "lt-electrical-meter.json",
+      "assertions": [
+        "Produces a meter config file that is valid JSON",
+        "Passes ModbusOpen import validation (the checker exits 0)",
+        "Contains exactly one profile",
+        "Every parameter lands on the correct 0-based wire address (datasheet number minus its base)",
+        "Invents no addresses the datasheet doesn't state",
+        "Data type matches the datasheet for every parameter",
+        "Scale factor matches, applied in the right direction",
+        "Read function code matches the datasheet",
+        "Default unit ID is 1",
+        "Every parameter has a simBehavior so the meter simulates instead of serving zeros"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "socomec-mixed-scales",
+      "prompt": "Need to get a Socomec Countis A40 into ModbusOpen and share it with the commissioning team. Communication manual table is at [...]. Make me the config file.",
+      "tests": "Scale direction in both directions in one table: 0.001, 0.01 and x10. int32 throughout. 'High word first' means abcd, not the cdab default. A 60-register gap before the energy block forces a second request.",
+      "truth": "socomec-a40.json",
+      "assertions": [
+        "Produces a meter config file that is valid JSON",
+        "Passes ModbusOpen import validation (the checker exits 0)",
+        "Contains exactly one profile",
+        "Every parameter lands on the correct 0-based wire address (datasheet number minus its base)",
+        "Invents no addresses the datasheet doesn't state",
+        "Data type matches the datasheet for every parameter",
+        "Scale factor matches, applied in the right direction",
+        "Read function code matches the datasheet",
+        "Default unit ID is 1",
+        "Every parameter has a simBehavior so the meter simulates instead of serving zeros",
+        "Word order is abcd, as the datasheet's 'high word first' states"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "rish-input-registers",
+      "prompt": "can you turn this rish em1330 map into a modbusopen meter file for me, want to send it to two colleagues who dont have the meter in front of them so they should be able to play with it in the simulator. map is here [...]",
+      "tests": "3xxxx input registers (subtract 30001) and FC04, not the more common FC03/4xxxx. Casual lowercase prompt. The user explicitly wants colleagues to use the simulator, so missing simBehavior is a real failure here, not a nitpick.",
+      "truth": "rish-em1330.json",
+      "assertions": [
+        "Produces a meter config file that is valid JSON",
+        "Passes ModbusOpen import validation (the checker exits 0)",
+        "Contains exactly one profile",
+        "Every parameter lands on the correct 0-based wire address (datasheet number minus its base)",
+        "Invents no addresses the datasheet doesn't state",
+        "Data type matches the datasheet for every parameter",
+        "Scale factor matches, applied in the right direction",
+        "Read function code matches the datasheet",
+        "Default unit ID is 1",
+        "Every parameter has a simBehavior so the meter simulates instead of serving zeros",
+        "Word order is abcd, as the datasheet's 'high order word first' states"
+      ]
+    }
+  ]
+}

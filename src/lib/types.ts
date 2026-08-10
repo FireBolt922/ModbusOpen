@@ -85,12 +85,22 @@ export type ConnectionStatus =
     }
   | { state: "error"; message: string; at: string };
 
-export type PollConfig = {
-  unitId: number;
+/**
+ * One Modbus read request. A request covers a contiguous run of registers up
+ * to the function's limit, so a meter with parameters far apart needs several.
+ */
+export type ReadBlock = {
   function: FunctionCode;
   startAddress: number;
   quantity: number;
+};
+
+export type PollConfig = {
+  unitId: number;
+  /** Issued in order, once per cycle. Raw scanning is the one-element case. */
+  blocks: ReadBlock[];
   intervalMs: number;
+  /** How the raw register table decodes what comes back. */
   format: DataFormat;
 };
 
@@ -220,6 +230,82 @@ export type SimulatorSnapshot = {
   sessionId: number;
   tcpPort: number;
   slaves: SlaveSnapshot[];
+};
+
+// ---------------------------------------------------------------------------
+// Meter profiles (hand-maintained mirror of Rust types)
+// ---------------------------------------------------------------------------
+
+export type MeterPointGroup =
+  | "instantaneous"
+  | "energy"
+  | "harmonics"
+  | "diagnostics"
+  | "other";
+
+export type MeterSource =
+  | { kind: "user" }
+  | { kind: "imported"; from: string };
+
+export type RtuDefaults = {
+  baudRate: number;
+  dataBits: number;
+  parity: Parity;
+  stopBits: number;
+};
+
+/** One register's raw value at a known address. */
+export type AddressedWord = {
+  address: number;
+  value: number;
+};
+
+export type MeterPoint = {
+  key: string;
+  label: string;
+  address: number;
+  format: DataFormat;
+  unit: string;
+  /** Overrides the profile's function code for this parameter only. */
+  function?: FunctionCode;
+  group: MeterPointGroup;
+  unverified: boolean;
+  simBehavior?: TagBehavior;
+  simInitial?: number;
+};
+
+export type MeterProfile = {
+  id: string;
+  brand: string;
+  model: string;
+  description: string;
+  source: MeterSource;
+  /** Read function for any parameter that doesn't override it. */
+  function: FunctionCode;
+  defaultUnitId: number;
+  suggestedRtu?: RtuDefaults;
+  points: MeterPoint[];
+};
+
+export type MeterImportStatus = "new" | "duplicate_id" | "invalid";
+
+export type MeterImportItem = {
+  profile: MeterProfile;
+  status: MeterImportStatus;
+  message?: string;
+};
+
+export type MeterImportPreview = {
+  path: string;
+  items: MeterImportItem[];
+};
+
+export type ImportResolution = "rename" | "overwrite" | "skip";
+
+export type MeterImportChoice = {
+  profileId: string;
+  resolution: ImportResolution;
+  newId?: string;
 };
 
 /** Mirrors src-tauri/src/error.rs::AppError (serde adjacently tagged). */

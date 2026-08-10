@@ -368,6 +368,147 @@ mod tests {
         server.shutdown().await;
     }
 
+    /// A meter built in the editor and loaded into the simulator must actually
+    /// produce live data on the function code that profile reads, across every
+    /// request in its read plan. Three things have been broken here before:
+    /// profiles carried no tags at all (so every register stayed 0), FC04
+    /// profiles had a zero-sized input-register block, and a parameter too far
+    /// away to share a request was simply unreachable.
+    #[tokio::test]
+    async fn a_user_profile_simulates_live_data_on_its_own_function_code() {
+        use crate::modbus::meters::{
+            plan_reads, profile_to_simulator_config, test_support::sample_profile,
+        };
+        use crate::modbus::types::FunctionCode;
+
+        for function in [
+            FunctionCode::ReadHoldingRegisters,
+            FunctionCode::ReadInputRegisters,
+        ] {
+            let profile = sample_profile("mine", function);
+            let cfg = profile_to_simulator_config(&profile, 0, 10);
+            let slave = &cfg.slaves[0];
+            assert!(
+                !slave.tags.is_empty(),
+                "{function:?}: no animated tags — the simulator would serve all zeros"
+            );
+
+            let app = test_app();
+            let store = Arc::new(ModbusStore::new());
+            store.reset(&[(
+                slave.unit_id,
+                SlaveLayout {
+                    coil_count: slave.coil_count,
+                    discrete_count: slave.discrete_count,
+                    input_register_count: slave.input_register_count,
+                    holding_register_count: slave.holding_register_count,
+                },
+            )]);
+            let mut server = SimulatorServer::bind(
+                "127.0.0.1:0".parse().unwrap(),
+                store,
+                app.handle().clone(),
+                1,
+            )
+            .await
+            .unwrap();
+            let port = server.tcp_port();
+            let tags: Vec<(u8, TagConfig)> = slave
+                .tags
+                .iter()
+                .map(|t| (slave.unit_id, t.clone()))
+                .collect();
+            server.start_animation(app.handle().clone(), tags, 10);
+
+            // Let the ticker run at least once.
+            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
+            // Read the meter exactly the way the scanner will: one request per
+            // planned block. The far-away parameter is only reachable because
+            // the plan has a second request for it.
+            let plan = plan_reads(&profile);
+            assert_eq!(plan.len(), 2, "{function:?}: expected a two-request plan");
+
+            let mut client = connect(port, slave.unit_id).await;
+            let mut words: std::collections::HashMap<u16, u16> = std::collections::HashMap::new();
+            for block in &plan {
+                let regs = client
+                    .read_registers(
+                        block.function,
+                        block.start_address,
+                        block.quantity,
+                        slave.unit_id,
+                    )
+                    .await
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "{function:?} read of {} regs at {} failed: {e:?}",
+                            block.quantity, block.start_address
+                        )
+                    });
+                assert!(
+                    regs.iter().any(|&r| r != 0),
+                    "{function:?} block at {} is all zeros after animation",
+                    block.start_address
+                );
+                for (i, word) in regs.iter().enumerate() {
+                    words.insert(block.start_address + i as u16, *word);
+                }
+            }
+
+            // Per tag, not just per block: one data type could fail to encode
+            // and the block would still look alive from the other tags. The
+            // scaled uint16 current is the one that reads as a dead 0 when the
+            // scale is applied twice.
+            for tag in &slave.tags {
+                let span = tag.format.data_type.register_span();
+                let chunk: Vec<u16> = (0..span)
+                    .map(|i| {
+                        *words.get(&(tag.address + i as u16)).unwrap_or_else(|| {
+                            panic!(
+                                "tag '{}' at {} wasn't covered by the read plan",
+                                tag.name, tag.address
+                            )
+                        })
+                    })
+                    .collect();
+                let (value, err) = crate::modbus::codec::decode(&chunk, &tag.format);
+                assert!(
+                    err.is_none(),
+                    "tag '{}' decoded with an error: {err:?}",
+                    tag.name
+                );
+                let n = match value {
+                    crate::modbus::types::TypedValue::Float(v) => v,
+                    crate::modbus::types::TypedValue::Int(v) => v as f64,
+                    crate::modbus::types::TypedValue::Uint(v) => v as f64,
+                    other => panic!("tag '{}' decoded as {other:?}", tag.name),
+                };
+                assert!(n.is_finite(), "tag '{}' decoded as {n}", tag.name);
+                assert!(
+                    n != 0.0,
+                    "tag '{}' ({:?} {:?}) reads 0 but its behaviour {:?} can't produce 0 \
+                     — it never animated",
+                    tag.name,
+                    tag.format.data_type,
+                    tag.format.word_order,
+                    tag.behavior
+                );
+            }
+
+            // Input-register profiles must not be accidentally served from the
+            // holding block by the request handler.
+            if function == FunctionCode::ReadInputRegisters {
+                assert!(
+                    slave.input_register_count > 0,
+                    "FC04 profile has no input registers"
+                );
+            }
+            client.disconnect().await;
+            server.shutdown().await;
+        }
+    }
+
     #[tokio::test]
     async fn two_slave_ids_answer_independently_on_one_port() {
         let app = test_app();

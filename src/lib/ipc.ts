@@ -4,18 +4,25 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AddressedWord,
   AppError,
   ConnectionInfo,
   ConnectionLostEvent,
   ConnectionStatus,
   DataFormat,
+  DecodedRegister,
   FrameLogEntry,
+  MeterImportChoice,
+  MeterImportPreview,
+  MeterProfile,
   PollConfig,
   PollErrorEvent,
   PollResult,
+  ReadBlock,
   RtuConfig,
   SerialPortInfo,
   SimulatorConfig,
+  TagConfig,
   SimulatorInfo,
   SimulatorSnapshot,
   TcpConfig,
@@ -240,5 +247,122 @@ export async function openExternal(url: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/* ------------------------------------------------------------------ meters */
+
+export async function listMeterProfiles(): Promise<MeterProfile[]> {
+  return invoke<MeterProfile[]>("list_meter_profiles");
+}
+
+export async function getMeterProfile(id: string): Promise<MeterProfile> {
+  return invoke<MeterProfile>("get_meter_profile", { id });
+}
+
+export async function saveMeterProfile(
+  profile: MeterProfile,
+): Promise<MeterProfile> {
+  return invoke<MeterProfile>("save_meter_profile", { profile });
+}
+
+export async function deleteMeterProfile(id: string): Promise<void> {
+  return invoke("delete_meter_profile", { id });
+}
+
+export async function duplicateMeterProfile(
+  id: string,
+  newId: string,
+): Promise<MeterProfile> {
+  return invoke<MeterProfile>("duplicate_meter_profile", { id, newId });
+}
+
+export async function exportMeterProfiles(
+  ids: string[],
+  path: string,
+): Promise<string> {
+  return invoke<string>("export_meter_profiles", { ids, path });
+}
+
+export async function previewMeterImport(
+  path: string,
+): Promise<MeterImportPreview> {
+  return invoke<MeterImportPreview>("preview_meter_import", { path });
+}
+
+export async function commitMeterImport(
+  path: string,
+  resolutions: MeterImportChoice[],
+): Promise<MeterProfile[]> {
+  return invoke<MeterProfile[]>("commit_meter_import", { path, resolutions });
+}
+
+export async function meterProfileToSimulator(
+  id: string,
+  tcpPort: number,
+  tickMs: number,
+): Promise<SimulatorConfig> {
+  return invoke<SimulatorConfig>("meter_profile_to_simulator", {
+    id,
+    tcpPort,
+    tickMs,
+  });
+}
+
+/**
+ * Decode a meter's named parameters from whatever the last poll returned.
+ *
+ * Takes address/word pairs, not a block: a meter read in several requests has
+ * gaps, so there is no single contiguous array to index into.
+ */
+export async function decodeMeterPoints(
+  profile: MeterProfile,
+  words: AddressedWord[],
+): Promise<DecodedRegister[]> {
+  return invoke<DecodedRegister[]>("decode_meter_points", { profile, words });
+}
+
+/** The Modbus requests needed to read this meter once. */
+export async function meterReadPlan(
+  profile: MeterProfile,
+): Promise<ReadBlock[]> {
+  return invoke<ReadBlock[]>("meter_read_plan", { profile });
+}
+
+export async function decodeTagValues(
+  registers: number[],
+  tags: TagConfig[],
+): Promise<DecodedRegister[]> {
+  return invoke<DecodedRegister[]>("decode_tag_values", { registers, tags });
+}
+
+/** Native save dialog; returns null if the user cancels. */
+export async function pickSavePath(
+  defaultName: string,
+): Promise<string | null> {
+  try {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const path = await save({
+      defaultPath: defaultName,
+      filters: [{ name: "Meter pack", extensions: ["mbmeter.json", "json"] }],
+    });
+    return path ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Native open dialog for a meter pack; returns null if cancelled. */
+export async function pickOpenPath(): Promise<string | null> {
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const path = await open({
+      multiple: false,
+      filters: [{ name: "Meter pack", extensions: ["mbmeter.json", "json"] }],
+    });
+    if (Array.isArray(path)) return path[0] ?? null;
+    return path ?? null;
+  } catch {
+    return null;
   }
 }

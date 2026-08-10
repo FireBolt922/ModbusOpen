@@ -70,6 +70,13 @@ impl DataType {
             DataType::String => 0,
         }
     }
+
+    /// True for the IEEE-754 types, which carry a fractional part. Integer
+    /// registers quantise, so callers that generate or check values need to
+    /// know which side of that line a type sits on.
+    pub fn is_float(self) -> bool {
+        matches!(self, DataType::Float32 | DataType::Float64)
+    }
 }
 
 /// Byte/word arrangement for multi-register values.
@@ -172,15 +179,45 @@ pub struct ConnectionInfo {
     pub summary: String,
 }
 
+/// One Modbus read request: a function code, a start address, and how many
+/// items to ask for.
+///
+/// A request can only cover a contiguous run of registers, and only up to the
+/// function's limit. A meter whose parameters sit at 100, 400 and 3000 is
+/// therefore three requests, not one — which is why a poll carries a list of
+/// these rather than a single start/quantity pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadBlock {
+    pub function: FunctionCode,
+    pub start_address: WireAddress,
+    pub quantity: u16,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PollConfig {
     pub unit_id: u8,
-    pub function: FunctionCode,
-    pub start_address: WireAddress,
-    pub quantity: u16,
+    /// The requests issued, in order, once per poll cycle. Always at least
+    /// one; raw scanning is the one-element case.
+    pub blocks: Vec<ReadBlock>,
     pub interval_ms: u64,
+    /// How the raw register table decodes what comes back. Meter parameters
+    /// carry their own format and are decoded per point instead.
     pub format: DataFormat,
+}
+
+impl PollConfig {
+    /// The first request. Raw mode has exactly one, and the parts of the UI
+    /// that predate multi-block reads (the write panel's default address, the
+    /// bit-mode check) are asking about that one.
+    pub fn first_block(&self) -> ReadBlock {
+        self.blocks.first().copied().unwrap_or(ReadBlock {
+            function: FunctionCode::ReadHoldingRegisters,
+            start_address: 0,
+            quantity: 1,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -192,6 +229,17 @@ pub struct PollResult {
     pub latency_ms: f64,
     pub registers: Vec<DecodedRegister>,
     pub stats: PollStats,
+}
+
+/// One register's worth of raw data at a known address.
+///
+/// A poll that issued several requests comes back as a set of these rather
+/// than one array, since the addresses in between were never read.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressedWord {
+    pub address: WireAddress,
+    pub value: u16,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -417,4 +465,155 @@ pub struct SimulatorSnapshot {
     pub session_id: u64,
     pub tcp_port: u16,
     pub slaves: Vec<SlaveSnapshot>,
+}
+
+// ---------------------------------------------------------------------------
+// Meter profiles — user-built named register maps (scanner + shareable packs)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MeterPointGroup {
+    Instantaneous,
+    Energy,
+    Harmonics,
+    Diagnostics,
+    Other,
+}
+
+/// Where a profile came from. Every meter is user-owned — either built in the
+/// editor or imported from a shared pack — so this is provenance for display,
+/// not a permission level.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MeterSource {
+    #[default]
+    User,
+    #[serde(rename_all = "camelCase")]
+    Imported { from: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RtuDefaults {
+    pub baud_rate: u32,
+    pub data_bits: u8,
+    pub parity: Parity,
+    pub stop_bits: u8,
+}
+
+impl Default for RtuDefaults {
+    fn default() -> Self {
+        // Firmware field default: 9600 8-E-1.
+        Self {
+            baud_rate: 9600,
+            data_bits: 8,
+            parity: Parity::Even,
+            stop_bits: 1,
+        }
+    }
+}
+
+/// One named parameter inside a meter map. Address is always 0-based wire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterPoint {
+    pub key: String,
+    pub label: String,
+    pub address: WireAddress,
+    pub format: DataFormat,
+    #[serde(default)]
+    pub unit: String,
+    /// Which read function this parameter lives behind. Almost every meter
+    /// answers on one function, so this defaults to the profile's; a device
+    /// that splits input and holding registers sets it per parameter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<FunctionCode>,
+    #[serde(default = "default_point_group")]
+    pub group: MeterPointGroup,
+    #[serde(default)]
+    pub unverified: bool,
+    /// Optional simulator animation when this profile is loaded as a slave.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sim_behavior: Option<TagBehavior>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sim_initial: Option<f64>,
+}
+
+fn default_point_group() -> MeterPointGroup {
+    MeterPointGroup::Instantaneous
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterProfile {
+    pub id: String,
+    pub brand: String,
+    pub model: String,
+    #[serde(default)]
+    pub description: String,
+    /// Optional in the file so a hand-written profile can be imported as-is.
+    #[serde(default)]
+    pub source: MeterSource,
+    /// The read function used by any parameter that doesn't override it.
+    pub function: FunctionCode,
+    pub default_unit_id: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_rtu: Option<RtuDefaults>,
+    pub points: Vec<MeterPoint>,
+}
+
+/// Shareable export envelope (one or many profiles).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterPack {
+    pub version: u32,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exported_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exported_at: Option<DateTime<Utc>>,
+    pub profiles: Vec<MeterProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MeterImportStatus {
+    New,
+    DuplicateId,
+    Invalid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterImportItem {
+    pub profile: MeterProfile,
+    pub status: MeterImportStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterImportPreview {
+    pub path: String,
+    pub items: Vec<MeterImportItem>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportResolution {
+    Rename,
+    Overwrite,
+    Skip,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterImportChoice {
+    pub profile_id: String,
+    pub resolution: ImportResolution,
+    /// Required when resolution is Rename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_id: Option<String>,
 }

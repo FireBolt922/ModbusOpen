@@ -1,10 +1,94 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ConnectionPill } from "@/components/ConnectionPill";
 import { Button } from "@/components/ui/button";
-import { errorMessage, onSimUpdate, simSnapshot, simStop, simWriteCoil, simWriteRegister } from "@/lib/ipc";
-import type { SlaveSnapshot } from "@/lib/types";
+import { decodeTagValues, errorMessage, onSimUpdate, simSnapshot, simStop, simWriteCoil, simWriteRegister } from "@/lib/ipc";
+import type { DecodedRegister, SlaveSnapshot, TagConfig } from "@/lib/types";
+import { formatRawHex, formatRegisterValue } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { useSimulatorStore } from "@/store/simulatorStore";
+
+/**
+ * Named live values for a slave built from a meter profile.
+ *
+ * Without this the workspace is a wall of addresses starting at 0, and a
+ * profile whose block starts at 100 (or 1000) reads as "the simulator is
+ * broken" because every visible row is a legitimate zero.
+ */
+function TagTable({ tags, registers }: { tags: TagConfig[]; registers: number[] }) {
+  const sorted = useMemo(
+    () => [...tags].sort((a, b) => a.address - b.address),
+    [tags],
+  );
+  const [decoded, setDecoded] = useState<DecodedRegister[]>([]);
+
+  // Decoding is Rust's job — the UI never turns registers into numbers itself.
+  useEffect(() => {
+    if (sorted.length === 0 || registers.length === 0) {
+      setDecoded([]);
+      return;
+    }
+    let cancelled = false;
+    void decodeTagValues(registers, sorted)
+      .then((rows) => {
+        if (!cancelled) setDecoded(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setDecoded([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sorted, registers]);
+
+  if (tags.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        Live parameters{" "}
+        <span className="normal-case">({tags.length} animated)</span>
+      </h3>
+      <div className="overflow-hidden rounded-md border border-border">
+        <div className="grid grid-cols-[minmax(9rem,1.3fr)_minmax(5.5rem,0.9fr)_minmax(6rem,0.9fr)_4rem_minmax(7rem,1fr)] gap-x-3 border-b border-border bg-muted/40 px-3 py-1.5 text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">
+          <div>Parameter</div>
+          <div>Value</div>
+          <div>Type</div>
+          <div>Addr</div>
+          <div>Raw (hex)</div>
+        </div>
+        {sorted.map((t, i) => {
+          const row = decoded[i];
+          const value = row ? formatRegisterValue(row) : "—";
+          const hex = row?.raw.length ? formatRawHex(row.raw) : "—";
+          return (
+            <div
+              key={`${t.address}-${t.name}`}
+              className={cn(
+                "grid grid-cols-[minmax(9rem,1.3fr)_minmax(5.5rem,0.9fr)_minmax(6rem,0.9fr)_4rem_minmax(7rem,1fr)] items-center gap-x-3 border-b border-border/40 px-3 py-1.5 font-mono text-[0.8rem] tabular-nums last:border-b-0",
+                row?.decodeError && "text-destructive",
+              )}
+            >
+              <div className="truncate font-sans font-medium" title={t.name}>
+                {t.name}
+              </div>
+              <div
+                className="truncate font-sans font-medium"
+                title={row?.decodeError ?? value}
+              >
+                {value}
+              </div>
+              <div className="truncate text-muted-foreground">
+                {t.format.dataType} {t.format.wordOrder.toUpperCase()}
+              </div>
+              <div>{t.address}</div>
+              <div className="truncate text-muted-foreground">{hex}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function CoilGrid({
   unitId,
@@ -177,13 +261,16 @@ function ReadOnlyBits({
 function SlavePanel({
   slave,
   onError,
+  tags,
 }: {
   slave: SlaveSnapshot;
   onError: (msg: string) => void;
+  tags: TagConfig[];
 }) {
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
       <h2 className="font-heading text-sm font-semibold">Unit {slave.unitId}</h2>
+      <TagTable tags={tags} registers={slave.holdingRegisters} />
       <CoilGrid unitId={slave.unitId} coils={slave.coils} onError={onError} />
       <HoldingRegisterTable
         unitId={slave.unitId}
@@ -209,6 +296,7 @@ function SlavePanel({
 export default function SimulatorWorkspace() {
   const navigate = useNavigate();
   const info = useSimulatorStore((s) => s.info);
+  const config = useSimulatorStore((s) => s.config);
   const snapshot = useSimulatorStore((s) => s.snapshot);
   const applySnapshot = useSimulatorStore((s) => s.applySnapshot);
   const resetSession = useSimulatorStore((s) => s.resetSession);
@@ -286,7 +374,14 @@ export default function SimulatorWorkspace() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {snapshot?.slaves.map((slave) => (
-          <SlavePanel key={slave.unitId} slave={slave} onError={setError} />
+          <SlavePanel
+            key={slave.unitId}
+            slave={slave}
+            onError={setError}
+            tags={
+              config.slaves.find((s) => s.unitId === slave.unitId)?.tags ?? []
+            }
+          />
         ))}
       </div>
     </main>
