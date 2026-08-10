@@ -29,6 +29,7 @@ pub enum PollCommand {
     SetConfig(PollConfig),
     Start,
     Stop,
+    ResetStats,
     ReadOnce(PollConfig, oneshot::Sender<Result<PollResult, AppError>>),
     Write(WriteRequest, oneshot::Sender<Result<WriteResult, AppError>>),
 }
@@ -52,6 +53,12 @@ impl StatsAccumulator {
             max_latency_ms: None,
             last_tick: None,
         }
+    }
+
+    /// Zero every counter without touching the connection. The rate estimate
+    /// keeps no history either, so the next cycle starts a fresh average.
+    fn reset(&mut self) {
+        *self = Self::new();
     }
 
     fn record_rate(&mut self) {
@@ -86,6 +93,9 @@ impl StatsAccumulator {
         );
         self.stats.latency_min_ms = self.min_latency_ms.unwrap_or(0.0);
         self.stats.latency_max_ms = self.max_latency_ms.unwrap_or(0.0);
+        // A good response retires the last failure. Otherwise the error line
+        // stays on screen forever after one timeout, long after data resumed.
+        self.stats.last_error = None;
         self.record_rate();
         self.stats.clone()
     }
@@ -190,6 +200,7 @@ async fn run_poll_loop<R: Runtime>(
                     }
                     Some(PollCommand::Start) => running = true,
                     Some(PollCommand::Stop) => running = false,
+                    Some(PollCommand::ResetStats) => stats.reset(),
                     Some(PollCommand::ReadOnce(cfg, responder)) => {
                         let result = read_cycle(
                             &app, &mut client, &cfg, session_id, transport,

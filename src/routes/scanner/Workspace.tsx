@@ -29,6 +29,7 @@ import {
   onPollError,
   onPollResult,
   readOnce,
+  resetPollStats,
   setPollConfig,
   startPoll,
   stopPoll,
@@ -68,6 +69,8 @@ export default function ScannerWorkspace() {
   const rowsStale = useScannerStore((s) => s.rowsStale);
   const stats = useScannerStore((s) => s.stats);
   const lastError = useScannerStore((s) => s.lastError);
+  const consecutiveErrors = useScannerStore((s) => s.consecutiveErrors);
+  const clearStats = useScannerStore((s) => s.clearStats);
   const applyPollResult = useScannerStore((s) => s.applyPollResult);
   const applyPollError = useScannerStore((s) => s.applyPollError);
   const applyConnectionLost = useScannerStore((s) => s.applyConnectionLost);
@@ -313,6 +316,20 @@ export default function ScannerWorkspace() {
     }
   }
 
+  /**
+   * Zero the counters on both sides. Rust owns the running totals, so clearing
+   * only the UI copy would be undone by the very next poll event.
+   */
+  async function handleClearStats() {
+    clearStats();
+    setActionError(null);
+    try {
+      await resetPollStats();
+    } catch (err) {
+      setActionError(errorMessage(err));
+    }
+  }
+
   async function handleDisconnect() {
     setBusy(true);
     try {
@@ -365,8 +382,17 @@ export default function ScannerWorkspace() {
         {/* Counters ride in the top bar — they're the first thing you check
             when a device goes quiet, so they sit beside the connection, not
             in a footer three screens below the controls that caused them. */}
-        <StatsBar stats={stats} />
+        <StatsBar stats={stats} consecutiveErrors={consecutiveErrors} />
         <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => void handleClearStats()}
+            title="Reset TX/RX/error counters and latency for this session"
+          >
+            Clear
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -551,14 +577,16 @@ export default function ScannerWorkspace() {
       </section>
 
       {/* One error line for the whole screen. Poll failures used to live in the
-          footer and action failures up here, which meant two places to look. */}
-      {(actionError ?? lastError ?? stats.lastError) && (
+          footer and action failures up here, which meant two places to look.
+          It follows the *current* state only: a good response clears it, so a
+          single timeout doesn't leave a red line over live data. */}
+      {(actionError ?? lastError) && (
         <div
           className="flex items-start gap-2 border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive"
           role="alert"
         >
           <span className="flex-1">
-            {actionError ?? lastError ?? stats.lastError}
+            {actionError ?? lastError}
           </span>
           {actionError && (
             <button

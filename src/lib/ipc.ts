@@ -3,6 +3,7 @@
 // subscribe helper here. Components never call invoke()/listen() directly.
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import type {
   AddressedWord,
   AppError,
@@ -31,6 +32,11 @@ import type {
 } from "./types";
 
 export type { AppError };
+
+/** Read the version embedded in the running Tauri application. */
+export async function getAppVersion(): Promise<string> {
+  return getVersion();
+}
 
 export function isAppError(err: unknown): err is AppError {
   return (
@@ -99,6 +105,10 @@ export async function startPoll(): Promise<void> {
 
 export async function stopPoll(): Promise<void> {
   return invoke("stop_poll");
+}
+
+export async function resetPollStats(): Promise<void> {
+  return invoke("reset_poll_stats");
 }
 
 export async function readOnce(config: PollConfig): Promise<PollResult> {

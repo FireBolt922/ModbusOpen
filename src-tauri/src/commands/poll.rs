@@ -32,6 +32,15 @@ pub async fn stop_poll(state: State<'_, AppState>) -> Result<(), AppError> {
     session.send(PollCommand::Stop).await
 }
 
+/// Zero the session's TX/RX/error/latency counters. The connection and the
+/// poll loop keep running — this only clears what the stats bar shows.
+#[tauri::command]
+pub async fn reset_poll_stats(state: State<'_, AppState>) -> Result<(), AppError> {
+    let guard = state.scanner.lock().await;
+    let session = guard.as_ref().ok_or(AppError::NotConnected)?;
+    session.send(PollCommand::ResetStats).await
+}
+
 #[tauri::command]
 pub async fn read_once(
     state: State<'_, AppState>,

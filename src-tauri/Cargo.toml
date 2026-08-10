@@ -1,6 +1,6 @@
 [package]
 name = "modbusopen"
-version = "0.1.0"
+version = "0.1.1"
 description = "ModbusOpen — Modbus scanner and simulator"
 authors = ["Ganesh"]
 edition = "2021"
@@ -36,4 +36,3 @@ tauri-plugin-dialog = "2.7.2"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
-

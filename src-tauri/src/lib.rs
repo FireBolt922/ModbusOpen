@@ -48,6 +48,7 @@ pub fn run() {
             commands::poll::set_poll_config,
             commands::poll::start_poll,
             commands::poll::stop_poll,
+            commands::poll::reset_poll_stats,
             commands::poll::read_once,
             commands::write::write_single_coil,
             commands::write::write_single_register,

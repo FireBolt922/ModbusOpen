@@ -73,6 +73,11 @@ type ScannerState = {
   rowsStale: boolean;
   stats: PollStats;
   lastError: string | null;
+  /**
+   * Failures since the last good response. One timeout on a busy line is
+   * noise; a run of them means the device is gone, and the stats bar says so.
+   */
+  consecutiveErrors: number;
   lastSequence: number;
 
   setPreferredTransport: (t: Transport | null) => void;
@@ -94,6 +99,7 @@ type ScannerState = {
     stats: PollStats,
   ) => void;
   applyConnectionLost: (sessionId: number, message: string) => void;
+  clearStats: () => void;
   resetSession: () => void;
 };
 
@@ -109,6 +115,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
   rowsStale: false,
   stats: { ...EMPTY_STATS },
   lastError: null,
+  consecutiveErrors: 0,
   lastSequence: 0,
 
   setPreferredTransport: (preferredTransport) => set({ preferredTransport }),
@@ -148,6 +155,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
             rows: [],
             rowsStale: false,
             stats: { ...EMPTY_STATS },
+            consecutiveErrors: 0,
             lastSequence: 0,
             pollConfig: {
               ...get().pollConfig,
@@ -170,7 +178,9 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       rows: registers,
       rowsStale: false,
       stats,
-      lastError: stats.lastError,
+      // Data is flowing again — the old failure is history, not news.
+      lastError: null,
+      consecutiveErrors: 0,
       lastSequence: sequence,
     });
   },
@@ -178,11 +188,12 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
   applyPollError: (sessionId, message, stats) => {
     const conn = get().connection;
     if (!conn || conn.sessionId !== sessionId) return;
-    set({
+    set((s) => ({
       rowsStale: true,
       stats,
       lastError: message,
-    });
+      consecutiveErrors: s.consecutiveErrors + 1,
+    }));
   },
 
   applyConnectionLost: (sessionId, message) => {
@@ -196,6 +207,14 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     });
   },
 
+  /** Zero the counters and drop the stale error line, keeping the session. */
+  clearStats: () =>
+    set({
+      stats: { ...EMPTY_STATS },
+      lastError: null,
+      consecutiveErrors: 0,
+    }),
+
   resetSession: () =>
     set({
       connection: null,
@@ -205,6 +224,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       rowsStale: false,
       stats: { ...EMPTY_STATS },
       lastError: null,
+      consecutiveErrors: 0,
       lastSequence: 0,
     }),
 }));

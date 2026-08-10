@@ -4,8 +4,17 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   stats: PollStats;
+  /** Failures since the last good response. */
+  consecutiveErrors?: number;
   className?: string;
 };
+
+/**
+ * One bad cycle happens on any real bus. Three in a row means the device
+ * stopped answering, and the whole counter row goes red so it's visible from
+ * across the room.
+ */
+const ALARM_AFTER_ERRORS = 3;
 
 function Stat({
   label,
@@ -35,17 +44,27 @@ function Stat({
  * footer: TX/RX/Err is the first thing you look at when a device goes quiet,
  * and it shouldn't be the furthest thing from the controls that caused it.
  */
-export function StatsBar({ stats, className }: Props) {
+export function StatsBar({ stats, consecutiveErrors = 0, className }: Props) {
   const errors = stats.errorCount + stats.timeoutCount;
+  const alarming = consecutiveErrors >= ALARM_AFTER_ERRORS;
 
   return (
     <div
       className={cn(
         "flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1",
+        // The per-stat spans set their own muted colors; override them all so
+        // the row reads as one alarm rather than a half-red patchwork.
+        alarming &&
+          "animate-pulse border-destructive/70 bg-destructive/15 [&_span]:text-destructive",
         className,
       )}
       role="status"
       aria-live="off"
+      title={
+        alarming
+          ? `${consecutiveErrors} consecutive failures — no response from the device`
+          : undefined
+      }
     >
       <Stat label="TX">{stats.txCount.toLocaleString()}</Stat>
       <Stat label="RX">{stats.rxCount.toLocaleString()}</Stat>

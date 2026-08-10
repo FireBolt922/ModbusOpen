@@ -1,0 +1,1039 @@
+{
+  "version": 1,
+  "kind": "meter-pack",
+  "exportedBy": "Ganesh — derived from carbon_minus_iot_firmware_v2: common_files_iot/meter_register_constants.py and modbus_main/meter_codes/{l_and_t_meter,schneider_6436h_meter,schneider_6400_meter}.py",
+  "exportedAt": "2026-08-10T00:00:00Z",
+  "profiles": [
+    {
+      "id": "lt-electrical-meter",
+      "brand": "L&T",
+      "model": "Electrical meter (Carbon Minus IoT map)",
+      "description": "From the IoT firmware register map (meter_register_constants.py, MeterCompany.L_T) as decoded by modbus_main/meter_codes/l_and_t_meter.py. Firmware register numbers are 1-based; wire address = register - 1 (confirmed: run hours constant 217, firmware reads wire 216). All values float32 CDAB (Endian.Big + wordorder=Endian.Little) except run hours, uint32 CDAB. Firmware polls holding registers from wire 100 count 100, plus a separate 2-register read at 216. Units are inferred (the firmware map states no units); addresses and types are read from the source. NOTE: docs/reference/device-profiles.md in this repo labels 133/149/151 as Frequency/Voltage Avg/Current Total — that came from the older electrical_write_data.py simulator script and disagrees with the firmware map used here.",
+      "function": "read_holding_registers",
+      "defaultUnitId": 1,
+      "suggestedRtu": {
+        "baudRate": 9600,
+        "dataBits": 8,
+        "parity": "even",
+        "stopBits": 1
+      },
+      "points": [
+        {
+          "key": "active_power",
+          "label": "Active power",
+          "address": 100,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kW",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 145.0,
+            "max": 155.0
+          },
+          "simInitial": 150.0
+        },
+        {
+          "key": "reactive_power",
+          "label": "Reactive power",
+          "address": 108,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kVAr",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 10.0,
+            "max": 12.0
+          },
+          "simInitial": 11.0
+        },
+        {
+          "key": "power_factor",
+          "label": "Power factor",
+          "address": 116,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 0.95,
+            "max": 0.99
+          },
+          "simInitial": 0.97
+        },
+        {
+          "key": "demand_total",
+          "label": "Demand total",
+          "address": 124,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kVA",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 48.0,
+            "max": 52.0
+          },
+          "simInitial": 50.0
+        },
+        {
+          "key": "voltage_average",
+          "label": "Voltage average",
+          "address": 132,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "V",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 225.0,
+            "max": 235.0
+          },
+          "simInitial": 230.0
+        },
+        {
+          "key": "current_total",
+          "label": "Current total",
+          "address": 148,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 14.0,
+            "max": 16.0
+          },
+          "simInitial": 15.0
+        },
+        {
+          "key": "r_phase_current",
+          "label": "R phase current",
+          "address": 150,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 4.5,
+            "max": 5.5
+          },
+          "simInitial": 5.0
+        },
+        {
+          "key": "y_phase_current",
+          "label": "Y phase current",
+          "address": 152,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 4.5,
+            "max": 5.5
+          },
+          "simInitial": 5.0
+        },
+        {
+          "key": "b_phase_current",
+          "label": "B phase current",
+          "address": 154,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 4.5,
+            "max": 5.5
+          },
+          "simInitial": 5.0
+        },
+        {
+          "key": "frequency",
+          "label": "Frequency",
+          "address": 156,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "Hz",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 49.9,
+            "max": 50.1
+          },
+          "simInitial": 50.0
+        },
+        {
+          "key": "energy_received",
+          "label": "Energy received",
+          "address": 158,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kWh",
+          "group": "energy",
+          "simBehavior": {
+            "kind": "counter",
+            "step": 0.05
+          },
+          "simInitial": 1000.0
+        },
+        {
+          "key": "vah_received",
+          "label": "VAh received",
+          "address": 160,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kVAh",
+          "group": "energy",
+          "simBehavior": {
+            "kind": "counter",
+            "step": 0.05
+          },
+          "simInitial": 1050.0
+        },
+        {
+          "key": "varh_inductive_received",
+          "label": "VArh inductive received",
+          "address": 162,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kVArh",
+          "group": "energy",
+          "simBehavior": {
+            "kind": "counter",
+            "step": 0.02
+          },
+          "simInitial": 300.0
+        },
+        {
+          "key": "varh_capacitive_received",
+          "label": "VArh capacitive received",
+          "address": 164,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kVArh",
+          "group": "energy",
+          "simBehavior": {
+            "kind": "counter",
+            "step": 0.01
+          },
+          "simInitial": 40.0
+        },
+        {
+          "key": "energy_delivered",
+          "label": "Energy delivered",
+          "address": 166,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kWh",
+          "group": "energy",
+          "simBehavior": {
+            "kind": "counter",
+            "step": 0.01
+          },
+          "simInitial": 12.0
+        },
+        {
+          "key": "v_r_harmonics",
+          "label": "R phase voltage THD",
+          "address": 184,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 1.0,
+            "max": 3.0
+          },
+          "simInitial": 2.0
+        },
+        {
+          "key": "v_y_harmonics",
+          "label": "Y phase voltage THD",
+          "address": 186,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 1.0,
+            "max": 3.0
+          },
+          "simInitial": 2.0
+        },
+        {
+          "key": "v_b_harmonics",
+          "label": "B phase voltage THD",
+          "address": 188,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 1.0,
+            "max": 3.0
+          },
+          "simInitial": 2.0
+        },
+        {
+          "key": "i_r_harmonics",
+          "label": "R phase current THD",
+          "address": 190,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 3.0,
+            "max": 8.0
+          },
+          "simInitial": 5.0
+        },
+        {
+          "key": "i_y_harmonics",
+          "label": "Y phase current THD",
+          "address": 192,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 3.0,
+            "max": 8.0
+          },
+          "simInitial": 5.0
+        },
+        {
+          "key": "i_b_harmonics",
+          "label": "B phase current THD",
+          "address": 194,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 3.0,
+            "max": 8.0
+          },
+          "simInitial": 5.0
+        },
+        {
+          "key": "run_hours",
+          "label": "Run hours",
+          "address": 216,
+          "format": {
+            "dataType": "uint32",
+            "wordOrder": "cdab",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "h",
+          "group": "diagnostics",
+          "simBehavior": {
+            "kind": "counter",
+            "step": 1.0
+          },
+          "simInitial": 100.0
+        }
+      ]
+    },
+    {
+      "id": "schneider-6436h",
+      "brand": "Schneider",
+      "model": "6436H (Carbon Minus IoT map)",
+      "description": "From the IoT firmware register map (meter_register_constants.py, MeterCompany.SCHNEIDER_6436H) as decoded by modbus_main/meter_codes/schneider_6436h_meter.py. Firmware register numbers are 1-based; wire address = register - 1 (confirmed twice: constant 2700 is read at wire 2699, constant 3110 at wire 3109). All values float32 ABCD — the firmware swaps the register pair before decoding with wordorder=Little, which nets out to big-endian word order, and the commented sample frame in the firmware decodes to a coherent 11 kV HT reading only under ABCD. Firmware polls holding registers from wire 2999 count 100, plus separate reads at 2699 and 3109. Reactive power, demand total, energy delivered, VAh, VArh and all six harmonics are NOT registers on this meter in the firmware — they are computed or unavailable — so they are omitted here rather than guessed. PER-PARAMETER NOTES — active_power: Address and word order both unresolved in the firmware. The constant says register 3060 (wire 3059, ABCD like every other point here); schneider_6436h_meter.py instead hardcodes block indices 59/60 in swapped order, i.e. wire 3058-3059 read CDAB. Both readings cover wire 3059. This entry follows the constant. Verify this parameter against hardware before trusting it, and if the value is absurd try address 3058 with wordOrder cdab.",
+      "function": "read_holding_registers",
+      "defaultUnitId": 1,
+      "suggestedRtu": {
+        "baudRate": 9600,
+        "dataBits": 8,
+        "parity": "even",
+        "stopBits": 1
+      },
+      "points": [
+        {
+          "key": "energy_received",
+          "label": "Energy received",
+          "address": 2699,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kWh",
+          "group": "energy",
+          "simBehavior": {
+            "kind": "counter",
+            "step": 0.5
+          },
+          "simInitial": 2896.0
+        },
+        {
+          "key": "r_phase_current",
+          "label": "R phase current",
+          "address": 2999,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 28.0,
+            "max": 34.0
+          },
+          "simInitial": 31.0
+        },
+        {
+          "key": "y_phase_current",
+          "label": "Y phase current",
+          "address": 3001,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 28.0,
+            "max": 34.0
+          },
+          "simInitial": 31.0
+        },
+        {
+          "key": "b_phase_current",
+          "label": "B phase current",
+          "address": 3003,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 28.0,
+            "max": 34.0
+          },
+          "simInitial": 31.0
+        },
+        {
+          "key": "current_total",
+          "label": "Current average",
+          "address": 3009,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 28.0,
+            "max": 34.0
+          },
+          "simInitial": 31.0
+        },
+        {
+          "key": "voltage_average",
+          "label": "Voltage average (L-L)",
+          "address": 3025,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "V",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 10800.0,
+            "max": 11300.0
+          },
+          "simInitial": 11068.0
+        },
+        {
+          "key": "active_power",
+          "label": "Active power total",
+          "address": 3059,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kW",
+          "group": "instantaneous",
+          "unverified": true,
+          "simBehavior": {
+            "kind": "random",
+            "min": 520.0,
+            "max": 620.0
+          },
+          "simInitial": 570.0
+        },
+        {
+          "key": "power_factor",
+          "label": "Power factor",
+          "address": 3083,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 0.93,
+            "max": 0.99
+          },
+          "simInitial": 0.96
+        },
+        {
+          "key": "frequency",
+          "label": "Frequency",
+          "address": 3109,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "Hz",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 49.8,
+            "max": 50.2
+          },
+          "simInitial": 50.0
+        }
+      ]
+    },
+    {
+      "id": "schneider-6400ng",
+      "brand": "Schneider",
+      "model": "EM6400NG (Carbon Minus IoT map)",
+      "description": "From the IoT firmware register map (meter_register_constants.py, MeterCompany.SCHNEIDER_6400) as decoded by modbus_main/meter_codes/schneider_6400_meter.py. Firmware register numbers are 1-based; wire address = register - 1 (confirmed against every hardcoded read in the file: 3192->3191, 3204->3203, 21300->21299, ...). Word order ABCD throughout — the firmware swaps register pairs before decoding with wordorder=Little, which nets out to big-endian. Firmware polls three blocks of holding registers: wire 2999 count 114, wire 3191 count 50, wire 21299 count 30. The five energy accumulators are int64; their unit (Wh/VArh/VAh vs kWh/...) is inferred from how the firmware uploads them, not stated in the map. Firmware negates VArh capacitive before upload; this file does not — the register value is served as read. PER-PARAMETER NOTES — active_power: Firmware constant says register 3060 -> wire 3059, and schneider_6400_meter.py reads block indices 60/61 which is wire 3059-3060. The sibling 6436H firmware reads wire 3058-3059 for the same parameter, so the two disagree by one register. This entry follows the 6400 source. Verify against hardware first; if absurd, try 3058. | energy_received: Unit inferred as Wh from the firmware's upload convention; the register map itself states no unit. | energy_delivered: Unit inferred as Wh from the firmware's upload convention. Firmware maps a raw value of -1 to 0. | varh_inductive_received: Unit inferred from the firmware's upload convention. Firmware maps a raw value of -1 to 0. | varh_capacitive_received: Unit inferred from the firmware's upload convention. Firmware multiplies this one by -1 before upload; this profile serves the register as read. | vah_received: Unit inferred from the firmware's upload convention. Firmware maps a raw value of -1 to 0.",
+      "function": "read_holding_registers",
+      "defaultUnitId": 1,
+      "suggestedRtu": {
+        "baudRate": 9600,
+        "dataBits": 8,
+        "parity": "even",
+        "stopBits": 1
+      },
+      "points": [
+        {
+          "key": "r_phase_current",
+          "label": "R phase current",
+          "address": 2999,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 85.0,
+            "max": 105.0
+          },
+          "simInitial": 95.0
+        },
+        {
+          "key": "y_phase_current",
+          "label": "Y phase current",
+          "address": 3001,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 85.0,
+            "max": 105.0
+          },
+          "simInitial": 95.0
+        },
+        {
+          "key": "b_phase_current",
+          "label": "B phase current",
+          "address": 3003,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 85.0,
+            "max": 105.0
+          },
+          "simInitial": 95.0
+        },
+        {
+          "key": "current_total",
+          "label": "Current average",
+          "address": 3009,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "A",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 85.0,
+            "max": 105.0
+          },
+          "simInitial": 95.0
+        },
+        {
+          "key": "voltage_average",
+          "label": "Voltage average (L-L)",
+          "address": 3025,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "V",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 405.0,
+            "max": 425.0
+          },
+          "simInitial": 415.0
+        },
+        {
+          "key": "active_power",
+          "label": "Active power total",
+          "address": 3059,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kW",
+          "group": "instantaneous",
+          "unverified": true,
+          "simBehavior": {
+            "kind": "random",
+            "min": 55.0,
+            "max": 75.0
+          },
+          "simInitial": 65.0
+        },
+        {
+          "key": "reactive_power",
+          "label": "Reactive power total",
+          "address": 3067,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kVAr",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 12.0,
+            "max": 20.0
+          },
+          "simInitial": 16.0
+        },
+        {
+          "key": "demand_total",
+          "label": "Apparent power total",
+          "address": 3075,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "kVA",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 60.0,
+            "max": 80.0
+          },
+          "simInitial": 68.0
+        },
+        {
+          "key": "frequency",
+          "label": "Frequency",
+          "address": 3109,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "Hz",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 49.8,
+            "max": 50.2
+          },
+          "simInitial": 50.0
+        },
+        {
+          "key": "power_factor",
+          "label": "Power factor",
+          "address": 3191,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "",
+          "group": "instantaneous",
+          "simBehavior": {
+            "kind": "random",
+            "min": 0.93,
+            "max": 0.99
+          },
+          "simInitial": 0.96
+        },
+        {
+          "key": "energy_received",
+          "label": "Energy received",
+          "address": 3203,
+          "format": {
+            "dataType": "int64",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "Wh",
+          "group": "energy",
+          "unverified": true,
+          "simBehavior": {
+            "kind": "counter",
+            "step": 18.0
+          },
+          "simInitial": 45000000.0
+        },
+        {
+          "key": "energy_delivered",
+          "label": "Energy delivered",
+          "address": 3207,
+          "format": {
+            "dataType": "int64",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "Wh",
+          "group": "energy",
+          "unverified": true,
+          "simBehavior": {
+            "kind": "counter",
+            "step": 1.0
+          },
+          "simInitial": 12000.0
+        },
+        {
+          "key": "varh_inductive_received",
+          "label": "VArh inductive received",
+          "address": 3219,
+          "format": {
+            "dataType": "int64",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "VArh",
+          "group": "energy",
+          "unverified": true,
+          "simBehavior": {
+            "kind": "counter",
+            "step": 5.0
+          },
+          "simInitial": 9000000.0
+        },
+        {
+          "key": "varh_capacitive_received",
+          "label": "VArh capacitive received",
+          "address": 3223,
+          "format": {
+            "dataType": "int64",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "VArh",
+          "group": "energy",
+          "unverified": true,
+          "simBehavior": {
+            "kind": "counter",
+            "step": 2.0
+          },
+          "simInitial": 1500000.0
+        },
+        {
+          "key": "vah_received",
+          "label": "VAh received",
+          "address": 3235,
+          "format": {
+            "dataType": "int64",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "VAh",
+          "group": "energy",
+          "unverified": true,
+          "simBehavior": {
+            "kind": "counter",
+            "step": 20.0
+          },
+          "simInitial": 47000000.0
+        },
+        {
+          "key": "i_r_harmonics",
+          "label": "R phase current THD",
+          "address": 21299,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 3.0,
+            "max": 9.0
+          },
+          "simInitial": 6.0
+        },
+        {
+          "key": "i_y_harmonics",
+          "label": "Y phase current THD",
+          "address": 21301,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 3.0,
+            "max": 9.0
+          },
+          "simInitial": 6.0
+        },
+        {
+          "key": "i_b_harmonics",
+          "label": "B phase current THD",
+          "address": 21303,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 3.0,
+            "max": 9.0
+          },
+          "simInitial": 6.0
+        },
+        {
+          "key": "v_r_harmonics",
+          "label": "R phase voltage THD",
+          "address": 21321,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 1.0,
+            "max": 3.5
+          },
+          "simInitial": 2.0
+        },
+        {
+          "key": "v_y_harmonics",
+          "label": "Y phase voltage THD",
+          "address": 21323,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 1.0,
+            "max": 3.5
+          },
+          "simInitial": 2.0
+        },
+        {
+          "key": "v_b_harmonics",
+          "label": "B phase voltage THD",
+          "address": 21325,
+          "format": {
+            "dataType": "float32",
+            "wordOrder": "abcd",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          "unit": "%",
+          "group": "harmonics",
+          "simBehavior": {
+            "kind": "random",
+            "min": 1.0,
+            "max": 3.5
+          },
+          "simInitial": 2.0
+        }
+      ]
+    }
+  ]
+}
