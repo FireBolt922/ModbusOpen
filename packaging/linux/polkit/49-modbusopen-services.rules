@@ -1,0 +1,46 @@
+// ModbusOpen — permission to start and stop services from the app.
+//
+// Installed to /usr/share/polkit-1/rules.d/ by the .deb. AppImage and
+// build-from-source users install it by hand — see DEVELOPMENT.md.
+//
+// Setup on the machine:
+//
+//     sudo groupadd -f modbusopen
+//     sudo usermod -aG modbusopen "$USER"
+//     # log out and back in for the group to take effect
+//
+// Without this file, every Stop fails with "Interactive authentication
+// required" and the app shows these instructions instead of a raw error.
+//
+// Scope: this grants start/stop/restart on ANY unit to members of the
+// modbusopen group. It is written that way on purpose — the list of monitored
+// services is configured at runtime by the operator, so it cannot be baked in
+// here. Note that manage-units also covers `restart`, `reload` and `kill`,
+// which the app itself never issues.
+//
+// Hardened sites: replace the rule below with the unit-scoped variant at the
+// bottom of this file, which allows only units matching a fixed prefix.
+
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.isInGroup("modbusopen")) {
+        return polkit.Result.YES;
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Unit-scoped variant — narrower, but the prefix must be maintained by hand.
+// Delete the rule above and uncomment this one to use it.
+// ---------------------------------------------------------------------------
+//
+// polkit.addRule(function (action, subject) {
+//     if (action.id == "org.freedesktop.systemd1.manage-units" &&
+//         subject.isInGroup("modbusopen")) {
+//         var unit = action.lookup("unit");
+//         var verb = action.lookup("verb");
+//         if (unit && unit.indexOf("meter-") === 0 &&
+//             (verb == "start" || verb == "stop")) {
+//             return polkit.Result.YES;
+//         }
+//     }
+// });

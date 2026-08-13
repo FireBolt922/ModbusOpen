@@ -108,6 +108,24 @@ sim_stop()                                       -> ()
 sim_set_tag(slave_id, TagConfig)                 -> ()
 sim_snapshot()                                   -> SimulatorSnapshot
 sim_load_profile(path)                           -> SimulatorConfig
+
+// Service control — Linux only. Every one of these rejects with
+// AppError::Unsupported on macOS/Windows; services_supported() is the gate.
+services_supported()                             -> bool          // sync
+services_platform()                              -> String        // sync, e.g. "macos"
+services_unlock(password)                        -> UnlockState
+services_unlock_state()                          -> UnlockState
+services_lock()                                  -> ()
+get_services_config()                            -> ServicesConfig
+save_services_config(ServicesConfig)             -> ServicesConfig // needs unlock
+validate_service_units(names)                    -> Vec<ServiceValidation>
+list_monitored_services()                        -> Vec<ServiceStatus>
+start_service(unit)                              -> ServiceStatus
+stop_service(unit)                               -> ServiceStatus  // open; UI confirms
+services_watch_start()                           -> u64            // session id
+services_watch_stop()                            -> ()
+service_logs_open(unit)                          -> u64            // session id
+service_logs_close(session_id)                   -> ()
 ```
 
 ### Events (Rust → UI, streaming)
@@ -118,6 +136,8 @@ sim_load_profile(path)                           -> SimulatorConfig
 "connection-lost"   AppError            // fatal; UI drops to disconnected
 "frame"             FrameLogEntry       // one per TX and one per RX
 "sim-update"        SimulatorSnapshot   // throttled to ~10 Hz
+"service-status"    ServiceStatusEvent  // full list, every 3 s while View is open
+"service-log"       ServiceLogEvent     // journal lines, batched at 10 Hz
 ```
 
 ### Rules

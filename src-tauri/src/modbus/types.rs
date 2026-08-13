@@ -361,12 +361,22 @@ pub struct PollErrorEvent {
     pub stats: PollStats,
 }
 
-/// Fatal transport failure — the poll task is stopping.
+/// The transport dropped. The session survives — polling is paused and the
+/// port released until the UI asks for a reconnect.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionLostEvent {
     pub session_id: u64,
     pub message: String,
+}
+
+/// Outcome of reopening a parked session's transport.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconnectResult {
+    pub session_id: u64,
+    /// Whether polling resumed — true if it was running when the link dropped.
+    pub polling: bool,
 }
 
 /// How a tag's value evolves on each animation tick. `Ramp` bounces between
@@ -616,4 +626,119 @@ pub struct MeterImportChoice {
     /// Required when resolution is Rename.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_id: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Service control (Linux only)
+//
+// The app never rewrites anything on the system: it reads unit state, and it
+// starts and stops units. Enabling/disabling stays with the operator in a
+// terminal — see `docs/04-ux-flows.md#services`.
+// ---------------------------------------------------------------------------
+
+/// The top-level split on the View screen. Capture is the default because it's
+/// what an operator touches day to day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceSubcategory {
+    Capture,
+    Sync,
+}
+
+impl Default for ServiceSubcategory {
+    fn default() -> Self {
+        Self::Capture
+    }
+}
+
+/// One monitored unit, as configured on the Configure screen. This is what we
+/// persist; everything else about a service is read live from the system.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceEntry {
+    /// Full unit name including the suffix, e.g. `meter-poll.service`.
+    pub unit: String,
+    /// The operator's own words. Falls back to the unit's own Description in
+    /// the UI when empty.
+    #[serde(default)]
+    pub description: String,
+    /// Free-text grouping, e.g. "Meters". Empty means "Uncategorised".
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub subcategory: ServiceSubcategory,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServicesConfig {
+    pub version: u32,
+    #[serde(default)]
+    pub services: Vec<ServiceEntry>,
+}
+
+/// A configured entry joined with what the system currently reports.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceStatus {
+    pub unit: String,
+    /// The operator's description if they gave one, otherwise the unit's own.
+    pub description: String,
+    pub category: String,
+    pub subcategory: ServiceSubcategory,
+    /// `loaded`, `not-found`, `masked`, `error`.
+    pub load_state: String,
+    /// `active`, `inactive`, `failed`, `activating`, `deactivating`.
+    pub active_state: String,
+    /// `running`, `dead`, `exited`, …
+    pub sub_state: String,
+    /// `enabled`, `disabled`, `static`, `masked`, or empty when the unit has no
+    /// install section. This is how "permanently disabled" is detected — the
+    /// app reads it, it never writes it.
+    pub unit_file_state: String,
+    /// Set while a stop is being held. The auto-restart task starts the unit
+    /// again at this instant unless the operator disabled it in the meantime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_start_at: Option<DateTime<Utc>>,
+}
+
+/// Result of checking one name typed into the Configure form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceValidation {
+    pub unit: String,
+    pub valid: bool,
+    /// The unit's own Description, when the system knows it — the Configure
+    /// form pre-fills from this so nobody retypes what systemd already knows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub message: String,
+}
+
+/// The 30-minute unlock that gates the Configure tab.
+/// Owned by Rust so the expiry has exactly one source of truth.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockState {
+    pub unlocked: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Payload of the `service-status` event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceStatusEvent {
+    pub session_id: u64,
+    pub services: Vec<ServiceStatus>,
+}
+
+/// Payload of the `service-log` event. Lines are batched, never one event per
+/// line — a busy unit would otherwise flood the IPC channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceLogEvent {
+    pub session_id: u64,
+    pub unit: String,
+    pub lines: Vec<String>,
 }

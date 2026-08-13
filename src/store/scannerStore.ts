@@ -68,6 +68,13 @@ type ScannerState = {
   pollConfig: PollConfig;
   connection: ConnectionInfo | null;
   connecting: boolean;
+  /**
+   * Why the transport dropped, or null while it's healthy. The session is
+   * still alive in Rust when this is set — the workspace stays put and offers
+   * a reconnect rather than throwing the user back to the setup form.
+   */
+  linkDown: string | null;
+  reconnecting: boolean;
   polling: boolean;
   rows: DecodedRegister[];
   rowsStale: boolean;
@@ -99,6 +106,9 @@ type ScannerState = {
     stats: PollStats,
   ) => void;
   applyConnectionLost: (sessionId: number, message: string) => void;
+  setReconnecting: (v: boolean) => void;
+  applyReconnected: (polling: boolean) => void;
+  applyReconnectFailed: (message: string) => void;
   clearStats: () => void;
   resetSession: () => void;
 };
@@ -110,6 +120,8 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
   pollConfig: { ...DEFAULT_POLL_CONFIG },
   connection: null,
   connecting: false,
+  linkDown: null,
+  reconnecting: false,
   polling: false,
   rows: [],
   rowsStale: false,
@@ -149,6 +161,8 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     set({
       connection,
       connecting: false,
+      linkDown: null,
+      reconnecting: false,
       ...(connection
         ? {
             lastError: null,
@@ -196,16 +210,35 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     }));
   },
 
+  /**
+   * The transport dropped. Keep the session, the poll config and the rows —
+   * they're what the user set up and what they were reading a second ago.
+   * Only the live-ness goes away, and the workspace says so.
+   */
   applyConnectionLost: (sessionId, message) => {
     const conn = get().connection;
     if (!conn || conn.sessionId !== sessionId) return;
     set({
-      connection: null,
       polling: false,
       rowsStale: true,
+      linkDown: message,
       lastError: message,
     });
   },
+
+  setReconnecting: (reconnecting) => set({ reconnecting }),
+
+  applyReconnected: (polling) =>
+    set({
+      linkDown: null,
+      reconnecting: false,
+      lastError: null,
+      polling,
+      consecutiveErrors: 0,
+    }),
+
+  applyReconnectFailed: (message) =>
+    set({ reconnecting: false, linkDown: message, lastError: message }),
 
   /** Zero the counters and drop the stale error line, keeping the session. */
   clearStats: () =>
@@ -219,6 +252,8 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     set({
       connection: null,
       connecting: false,
+      linkDown: null,
+      reconnecting: false,
       polling: false,
       rows: [],
       rowsStale: false,

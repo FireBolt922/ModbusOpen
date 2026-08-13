@@ -32,6 +32,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/share/polkit-1/rules.d/49-modbusopen-services.rules": "../packaging/linux/polkit/49-modbusopen-services.rules"
+        }
+      }
+    }
   }
 }

@@ -375,6 +375,35 @@ copy so it isn't mistaken for a gap nobody noticed.
 
 ---
 
+### M6 — Service control (Linux)  ·  *code complete, unverified on hardware*
+
+Out-of-band from the v1 milestone sequence: this was requested for the Linux boxes that run
+capture and sync in the field, where an operator today leaves the app, opens a terminal, and
+runs `systemctl` by hand — and forgets to start the service again.
+
+**Status:** code complete. Every automated gate passes (`cargo fmt`, `cargo clippy -D warnings`,
+`cargo test`, `pnpm build`). **Nothing has been exercised against a real systemd machine** — the
+dev machine is macOS, the same constraint that blocks M2's RTU smoke tests. The
+Services checklist in [docs/06-testing.md](docs/06-testing.md#3-manual-smoke-checklist) is the
+sign-off gate.
+
+**Tasks**
+1. ~~`src-tauri/src/services/` — `systemctl.rs` (the only place that spawns a process),
+   `config.rs` (app-data persistence), `manager.rs` (unlock, deadlines, watcher, log tails).~~
+2. ~~15 commands, three new `AppError` variants, two events (`service-status`, `service-log`).~~
+3. ~~View tab: Capture/Sync toggle, category groups and filters, start/stop, live log tail.~~
+4. ~~Configure tab: password gate, multi-name validate-then-add, in-place editing.~~
+5. ~~30-minute auto-restart that survives an app restart.~~
+6. ~~Polkit rule shipped in the `.deb`.~~
+
+**Acceptance**
+- [ ] Every box in the **Services** section of docs/06-testing.md ticked on a real Linux box
+- [ ] The `.deb` installs the polkit rule and Stop works without an OS password prompt
+- [ ] A stopped service returns by itself, including across an app restart
+- [ ] macOS and Windows builds show the Linux-only notice and spawn no `systemctl` process
+
+---
+
 ## 5. Deliberately not in v1
 
 Saying no is why this ships. Each of these is a *later* maybe, not a never.

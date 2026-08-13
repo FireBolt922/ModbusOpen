@@ -20,14 +20,21 @@ import type {
   PollErrorEvent,
   PollResult,
   ReadBlock,
+  ReconnectResult,
   RtuConfig,
   SerialPortInfo,
+  ServiceLogEvent,
+  ServiceStatus,
+  ServiceStatusEvent,
+  ServiceValidation,
+  ServicesConfig,
   SimulatorConfig,
   TagConfig,
   SimulatorInfo,
   SimulatorSnapshot,
   TcpConfig,
   TypedValue,
+  UnlockState,
   WriteResult,
 } from "./types";
 
@@ -66,8 +73,18 @@ export function errorMessage(err: unknown): string {
       }
       case "ConnectionLost":
         return `Connection lost — ${err.message.reason}`;
+      case "BadFrame":
+        return `Bad reply — ${err.message.reason}`;
+      case "LinkDown":
+        return err.message.message;
       case "NotConnected":
         return "Not connected";
+      case "Unsupported":
+        return err.message.message;
+      case "ServiceControl":
+        return `Can't ${err.message.action} ${err.message.unit} — ${err.message.reason}`;
+      case "Locked":
+        return "Enter the configuration password to do that.";
     }
   }
   if (err instanceof Error) return err.message;
@@ -85,6 +102,16 @@ export async function tcpConnect(config: TcpConfig): Promise<ConnectionInfo> {
 
 export async function rtuConnect(config: RtuConfig): Promise<ConnectionInfo> {
   return invoke<ConnectionInfo>("rtu_connect", { config });
+}
+
+/**
+ * Reopen the current session's transport with the settings it was created
+ * with. The session, its poll config and its counters survive — this is what
+ * the workspace offers after a dropped link, instead of sending the user back
+ * to the setup form.
+ */
+export async function reconnect(): Promise<ReconnectResult> {
+  return invoke<ReconnectResult>("reconnect");
 }
 
 export async function disconnect(): Promise<void> {
@@ -344,6 +371,105 @@ export async function decodeTagValues(
   tags: TagConfig[],
 ): Promise<DecodedRegister[]> {
   return invoke<DecodedRegister[]>("decode_tag_values", { registers, tags });
+}
+
+// ---------------------------------------------------------------------------
+// Service control (Linux only)
+//
+// Every one of these rejects with AppError::Unsupported off Linux, so the UI
+// gates the whole screen on servicesSupported() before calling anything else.
+// ---------------------------------------------------------------------------
+
+/** Whether this build can control services at all. */
+export async function servicesSupported(): Promise<boolean> {
+  return invoke<boolean>("services_supported");
+}
+
+/** OS name ("macos", "windows", …), so the Linux-only notice can be specific. */
+export async function servicesPlatform(): Promise<string> {
+  return invoke<string>("services_platform");
+}
+
+/**
+ * Start the shared 30-minute unlock. It gates Stop *and* the Configure tab —
+ * the expiry is owned by Rust, so this is the only way to learn about it.
+ */
+export async function servicesUnlock(password: string): Promise<UnlockState> {
+  return invoke<UnlockState>("services_unlock", { password });
+}
+
+export async function servicesUnlockState(): Promise<UnlockState> {
+  return invoke<UnlockState>("services_unlock_state");
+}
+
+export async function servicesLock(): Promise<void> {
+  return invoke("services_lock");
+}
+
+export async function getServicesConfig(): Promise<ServicesConfig> {
+  return invoke<ServicesConfig>("get_services_config");
+}
+
+/** Requires the unlock. Returns the config as saved (trimmed, versioned). */
+export async function saveServicesConfig(
+  config: ServicesConfig,
+): Promise<ServicesConfig> {
+  return invoke<ServicesConfig>("save_services_config", { config });
+}
+
+/**
+ * Check one or many unit names. Accepts a comma-separated list, so a whole
+ * rack can be added in one go; names without a suffix get ".service".
+ */
+export async function validateServiceUnits(
+  names: string,
+): Promise<ServiceValidation[]> {
+  return invoke<ServiceValidation[]>("validate_service_units", { names });
+}
+
+/** One-shot list, for the first paint before the watcher's first tick. */
+export async function listMonitoredServices(): Promise<ServiceStatus[]> {
+  return invoke<ServiceStatus[]>("list_monitored_services");
+}
+
+/** No password needed — recovering a service is never the hard part. */
+export async function startService(unit: string): Promise<ServiceStatus> {
+  return invoke<ServiceStatus>("start_service", { unit });
+}
+
+/** Open on View — no password. Arms the 30-minute automatic restart. */
+export async function stopService(unit: string): Promise<ServiceStatus> {
+  return invoke<ServiceStatus>("stop_service", { unit });
+}
+
+/** Begin `service-status` pushes. Returns the session id to match against. */
+export async function servicesWatchStart(): Promise<number> {
+  return invoke<number>("services_watch_start");
+}
+
+export async function servicesWatchStop(): Promise<void> {
+  return invoke("services_watch_stop");
+}
+
+/** Open a live journal tail. Always pair with serviceLogsClose(). */
+export async function serviceLogsOpen(unit: string): Promise<number> {
+  return invoke<number>("service_logs_open", { unit });
+}
+
+export async function serviceLogsClose(sessionId: number): Promise<void> {
+  return invoke("service_logs_close", { sessionId });
+}
+
+export function onServiceStatus(
+  cb: (event: ServiceStatusEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<ServiceStatusEvent>("service-status", (e) => cb(e.payload));
+}
+
+export function onServiceLog(
+  cb: (event: ServiceLogEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<ServiceLogEvent>("service-log", (e) => cb(e.payload));
 }
 
 /** Native save dialog; returns null if the user cancels. */

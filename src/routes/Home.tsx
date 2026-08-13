@@ -121,7 +121,7 @@ export default function Home() {
         </Card>
 
         <Card
-          className="cursor-pointer transition-colors hover:bg-muted/50 sm:col-span-2"
+          className="cursor-pointer transition-colors hover:bg-muted/50"
           onClick={() => navigate("/meters")}
         >
           <CardHeader>
@@ -129,6 +129,19 @@ export default function Home() {
             <CardDescription>
               Build a meter from your own parameters, simulate it, and share it
               with a colleague.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
+        <Card
+          className="cursor-pointer transition-colors hover:bg-muted/50"
+          onClick={() => navigate("/services")}
+        >
+          <CardHeader>
+            <CardTitle>Services</CardTitle>
+            <CardDescription>
+              Start, stop and read the logs of the capture and sync services on
+              this machine. Linux only.
             </CardDescription>
           </CardHeader>
         </Card>

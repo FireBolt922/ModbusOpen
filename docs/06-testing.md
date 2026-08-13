@@ -178,10 +178,48 @@ Run before declaring any milestone done. The `milestone-check` skill walks throu
 - [ ] A master's FC16 write shows up in the simulator's live table
 - [ ] Manual edit of a value overrides the animation
 
+**Services** (Linux only — this cannot be smoke-tested on macOS or Windows)
+
+Create a throwaway unit first so no production service is involved:
+
+```bash
+sudo tee /etc/systemd/system/mbtest.service >/dev/null <<'UNIT'
+[Unit]
+Description=ModbusOpen test service
+[Service]
+ExecStart=/bin/sleep infinity
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo systemctl daemon-reload && sudo systemctl enable --now mbtest
+```
+
+- [ ] `.deb` installs the polkit rule to `/usr/share/polkit-1/rules.d/`; after
+      `usermod -aG modbusopen $USER` and a re-login, Stop works without an OS password prompt
+- [ ] Configure: `Inizent@098` unlocks; a real unit validates ✓ with its own description,
+      a made-up one validates ✕ with an actionable message
+- [ ] Multi-add: `mbtest, cron` in one go, each row gets its own editable description
+- [ ] View: Capture is preselected; the Sync toggle switches; category chips filter
+- [ ] Start a stopped unit — no password, state flips within one 3-second tick
+- [ ] Stop a running unit — warning modal explains the 30-minute return and that Start is on
+      this same View tab; confirming stops it and the countdown shows
+- [ ] With `AUTO_RESTART_MINUTES` temporarily lowered in a debug build, the unit comes back by
+      itself and the countdown clears
+- [ ] Stop, quit the app, reopen **after** the deadline ⇒ starts on launch. Reopen **before** ⇒
+      countdown resumes
+- [ ] `sudo systemctl disable --now mbtest` then Recheck ⇒ reads disabled, and the automatic
+      restart does **not** fire for it
+- [ ] Logs open with history, follow live (`systemd-cat -t mbtest <<< hello`), pause/resume
+      works, and closing the panel leaves no orphan: `pgrep -a journalctl` is empty
+- [ ] Unlock, wait past 30 minutes ⇒ Configure re-locks; Stop still works with the warning modal
+- [ ] Remove the polkit rule ⇒ Stop shows the group/reinstall instructions, not a D-Bus error
+
 **Cross-platform** (before release)
 - [ ] Fresh Windows 11 — installer runs, serial ports enumerate as `COMn`
 - [ ] Fresh Ubuntu 24.04 — `.deb` installs, `dialout` guidance appears when needed
 - [ ] macOS Intel and Apple Silicon — app opens, ports enumerate
+- [ ] macOS and Windows — the Services card opens a "Linux only" notice and no `systemctl`
+      process is ever spawned
 
 ---
 

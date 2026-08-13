@@ -35,11 +35,37 @@ pub enum AppError {
     #[error("Connection lost — {reason}")]
     ConnectionLost { reason: String },
 
+    #[error("Bad reply — {reason}")]
+    BadFrame { reason: String },
+
+    /// The transport dropped and the session is parked, waiting for a
+    /// reconnect. Carries the already-humanised reason it went down, so it
+    /// prints as-is rather than nesting inside another sentence.
+    #[error("{message}")]
+    LinkDown { message: String },
+
     #[error("{0}")]
     InvalidConfig(String),
 
     #[error("Not connected")]
     NotConnected,
+
+    /// A feature that only exists on one platform was reached on another.
+    #[error("{message}")]
+    Unsupported { message: String },
+
+    /// A `systemctl start`/`stop` didn't take. `action` is the verb, so the
+    /// sentence reads "Can't stop meter-poll.service — …".
+    #[error("Can't {action} {unit} — {reason}")]
+    ServiceControl {
+        action: String,
+        unit: String,
+        reason: String,
+    },
+
+    /// The shared 30-minute unlock has expired (or was never entered).
+    #[error("Enter the configuration password to do that.")]
+    Locked,
 }
 
 /// Map a serialport / OS open error to an actionable sentence. Never surface a
@@ -51,7 +77,40 @@ pub fn map_serial_open_error(port: &str, err: impl std::fmt::Display) -> AppErro
     }
 }
 
-/// Turn a mid-session transport I/O failure (USB unplug, port gone, etc.) into
+/// Turn a mid-session transport failure into a sentence naming the likeliest
+/// cause. Split by transport because the same errno means different things:
+/// a broken pipe on RS-485 is an unplugged adapter, on TCP it's the device
+/// hanging up — very often because it accepts only one client and somebody
+/// else already has it.
+pub fn humanize_link_error(transport: crate::modbus::types::Transport, raw: &str) -> String {
+    use crate::modbus::types::Transport;
+
+    if matches!(transport, Transport::Rtu) {
+        return humanize_serial_error(raw);
+    }
+
+    let lower = raw.to_lowercase();
+    if lower.contains("reset")
+        || lower.contains("broken pipe")
+        || lower.contains("eof")
+        || lower.contains("aborted")
+        || lower.contains("not connected")
+        || lower.contains("closed")
+    {
+        return "the device closed the connection. Many Modbus TCP devices and gateways \
+                accept only one client at a time — close the other program that's polling \
+                it, then reconnect."
+            .to_string();
+    }
+    if lower.contains("unreachable") || lower.contains("timed out") {
+        return "the device is no longer reachable — check the network, the cable, and \
+                whether the device is still powered."
+            .to_string();
+    }
+    raw.trim().to_string()
+}
+
+/// Turn a mid-session serial I/O failure (USB unplug, port gone, etc.) into
 /// something the footer can show.
 pub fn humanize_serial_error(raw: &str) -> String {
     let lower = raw.to_lowercase();
@@ -82,6 +141,76 @@ pub fn humanize_serial_error(raw: &str) -> String {
     }
     // Last resort: keep the OS text but still wrap it in SerialOpen's sentence.
     raw.trim().to_string()
+}
+
+/// A reply arrived but it wasn't usable — bad CRC, or a header that belongs to
+/// somebody else's request. The link is still open, so this must never read as
+/// "connection lost": the usual cause is a second master on the same bus, or
+/// two programs sharing one device.
+pub fn humanize_frame_error(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    if lower.contains("crc") {
+        return "checksum failed — the frame arrived garbled. Check baud rate, parity and \
+                wiring, and whether another program is polling the same bus."
+            .to_string();
+    }
+    if lower.contains("mismatching headers")
+        || lower.contains("mismatching function codes")
+        || lower.contains("invalid data")
+    {
+        return "the reply didn't match the request — another program is probably talking to \
+                this device at the same time. Close it, or poll from one master only."
+            .to_string();
+    }
+    raw.trim().to_string()
+}
+
+/// Turn `systemctl`'s stderr into a sentence naming the fix.
+///
+/// The one that matters most is the polkit case: if the rule shipped with the
+/// package isn't installed, every stop fails with "Interactive authentication
+/// required" — which tells an operator nothing. Name the actual remedy.
+pub fn humanize_systemctl_error(unit: &str, raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    let short = unit.trim_end_matches(".service");
+
+    if lower.contains("interactive authentication required")
+        || lower.contains("access denied")
+        || lower.contains("not authorized")
+        || lower.contains("permission denied")
+    {
+        return "this machine isn't set up to let ModbusOpen control services. Add your \
+                user to the 'modbusopen' group, reinstall the package so its permission \
+                rule is in place, then log out and back in."
+            .to_string();
+    }
+    if lower.contains("not found") || lower.contains("no such unit") {
+        return format!(
+            "there's no service called {short} on this machine. Check the exact name on the \
+             Configure tab."
+        );
+    }
+    if lower.contains("is masked") {
+        return format!(
+            "{short} is masked, so it can't be started until somebody runs \
+             `sudo systemctl unmask {unit}` in a terminal."
+        );
+    }
+    if lower.contains("job for") || lower.contains("failed with result") || lower.contains("see '")
+    {
+        return format!("{short} didn't come up. Open its logs to see why.");
+    }
+    if lower.contains("connection refused") || lower.contains("failed to connect to bus") {
+        return "the system service manager isn't reachable. Is this a systemd machine?"
+            .to_string();
+    }
+
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        "the system service manager rejected the request without saying why.".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// Maps a Modbus exception code to a human name and an actionable hint. See
@@ -143,6 +272,97 @@ mod tests {
         let err = map_serial_open_error("/dev/ttyUSB0", "Device or resource busy (os error 16)");
         let msg = err.to_string();
         assert!(msg.contains("busy"), "got: {msg}");
+    }
+
+    /// The reported bug in one assertion: a garbled frame must not be phrased
+    /// — or classified — as a lost connection.
+    #[test]
+    fn a_bad_checksum_reads_as_a_bad_frame_not_a_lost_link() {
+        let msg = humanize_frame_error("Invalid CRC: expected = 0x1234, actual = 0x5678");
+        assert!(msg.contains("checksum"), "got: {msg}");
+        assert!(
+            !msg.to_lowercase().contains("connection lost"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn a_foreign_reply_points_at_the_other_program() {
+        let msg = humanize_frame_error("mismatching headers: transaction id Ok(..)");
+        assert!(msg.contains("another program"), "got: {msg}");
+    }
+
+    #[test]
+    fn a_tcp_hangup_names_the_single_client_limit() {
+        let msg = humanize_link_error(
+            crate::modbus::types::Transport::Tcp,
+            "Connection reset by peer (os error 54)",
+        );
+        assert!(msg.contains("one client at a time"), "got: {msg}");
+        assert!(!msg.contains("os error"), "raw errno leaked: {msg}");
+    }
+
+    /// Same errno, different transport, different cause — RS-485 keeps the
+    /// unplugged-adapter wording rather than talking about TCP clients.
+    #[test]
+    fn the_same_errno_reads_differently_on_serial() {
+        let msg = humanize_link_error(
+            crate::modbus::types::Transport::Rtu,
+            "Broken pipe (os error 32)",
+        );
+        assert!(msg.contains("unplugged"), "got: {msg}");
+    }
+
+    /// The polkit rule is the one piece of setup a site can get wrong, so the
+    /// message has to name it rather than echo D-Bus jargon.
+    #[test]
+    fn missing_polkit_rule_names_the_group_and_the_reinstall() {
+        let msg = humanize_systemctl_error(
+            "meter-poll.service",
+            "Failed to stop meter-poll.service: Interactive authentication required.",
+        );
+        assert!(msg.contains("modbusopen"), "got: {msg}");
+        assert!(msg.contains("log out"), "got: {msg}");
+        assert!(
+            !msg.to_lowercase().contains("interactive authentication"),
+            "raw D-Bus text leaked: {msg}"
+        );
+    }
+
+    #[test]
+    fn unknown_unit_points_back_at_configure() {
+        let msg = humanize_systemctl_error(
+            "nope.service",
+            "Failed to start nope.service: Unit nope.service not found.",
+        );
+        assert!(msg.contains("nope"), "got: {msg}");
+        assert!(msg.contains("Configure"), "got: {msg}");
+    }
+
+    #[test]
+    fn a_unit_that_wont_start_sends_you_to_the_logs() {
+        let msg = humanize_systemctl_error(
+            "meter-poll.service",
+            "Job for meter-poll.service failed because the control process exited with error code.",
+        );
+        assert!(msg.contains("logs"), "got: {msg}");
+    }
+
+    #[test]
+    fn a_masked_unit_hands_over_the_unmask_command() {
+        let msg = humanize_systemctl_error(
+            "sync.service",
+            "Failed to start sync.service: Unit sync.service is masked.",
+        );
+        assert!(msg.contains("unmask sync.service"), "got: {msg}");
+    }
+
+    /// Empty stderr still has to produce a sentence — never a bare blank.
+    #[test]
+    fn a_silent_failure_still_says_something() {
+        let msg = humanize_systemctl_error("x.service", "   ");
+        assert!(!msg.trim().is_empty());
+        assert!(msg.contains("without saying why"), "got: {msg}");
     }
 
     #[test]

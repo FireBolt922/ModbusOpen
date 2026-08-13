@@ -208,6 +208,39 @@ any other build — no `docker cp` needed. First run is slow (compiles the full 
 tree with no cache); re-running the same container image reuses apt/rustup downloads only if you
 keep the container around instead of `--rm`.
 
+### 4c. Service control — one-time setup on the Linux machine
+
+The Services screen shells out to the system service manager. Reading state needs no
+privilege; starting and stopping does. That permission comes from a polkit rule, **not** from
+running the app as root and **not** from a stored password.
+
+The `.deb` installs the rule to `/usr/share/polkit-1/rules.d/49-modbusopen-services.rules`. All
+that's left is the group:
+
+```bash
+sudo groupadd -f modbusopen
+sudo usermod -aG modbusopen "$USER"
+# log out and back in — group membership only applies to new sessions
+```
+
+Running from an AppImage or a source build? Install the rule by hand first:
+
+```bash
+sudo install -m 0644 packaging/linux/polkit/49-modbusopen-services.rules \
+  /usr/share/polkit-1/rules.d/
+```
+
+Verify with `id -nG | grep modbusopen`. If it's missing, every Stop fails and the app shows
+these instructions rather than a D-Bus error.
+
+The rule grants unit management to members of that group, scoped by group rather than by unit
+name because the monitored list is configured at runtime. A narrower unit-scoped variant is
+commented at the bottom of the rules file for sites that want it.
+
+**The app never runs `enable`, `disable`, `mask`, or edits a unit file.** Permanently disabling
+a service stays a deliberate act in a terminal; the Configure tab hands over the command and
+reads the result back.
+
 ---
 
 ## 5. Tests and checks

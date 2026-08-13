@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
-use super::client::{ModbusClient, ReadError};
+use super::client::{ConnectSpec, ModbusClient, ReadError};
 use super::codec::{decode_block, encode};
 use super::frame::{
     fc_byte, make_frame, pdu_exception, pdu_read_bits_response, pdu_read_registers_response,
@@ -21,7 +21,8 @@ use super::frame::{
 };
 use super::types::{
     ConnectionLostEvent, DecodedRegister, Direction, FunctionCode, PollConfig, PollErrorEvent,
-    PollResult, PollStats, ReadBlock, Transport, TypedValue, WriteRequest, WriteResult,
+    PollResult, PollStats, ReadBlock, ReconnectResult, Transport, TypedValue, WriteRequest,
+    WriteResult,
 };
 use crate::error::AppError;
 
@@ -32,6 +33,9 @@ pub enum PollCommand {
     ResetStats,
     ReadOnce(PollConfig, oneshot::Sender<Result<PollResult, AppError>>),
     Write(WriteRequest, oneshot::Sender<Result<WriteResult, AppError>>),
+    /// Reopen the transport with the same settings, in place. The session, its
+    /// config and its counters survive — only the socket/port is rebuilt.
+    Reconnect(oneshot::Sender<Result<ReconnectResult, AppError>>),
 }
 
 struct StatsAccumulator {
@@ -132,6 +136,7 @@ impl ScannerSession {
         transport: Transport,
         summary: String,
         client: ModbusClient,
+        spec: ConnectSpec,
     ) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
         let cancel = CancellationToken::new();
@@ -139,6 +144,7 @@ impl ScannerSession {
             app,
             session_id,
             client,
+            spec,
             cmd_rx,
             cancel.clone(),
         ));
@@ -168,10 +174,18 @@ impl ScannerSession {
     }
 }
 
+/// The poll task.
+///
+/// A dead transport does **not** end this task. It closes the port (so the
+/// device — and whoever else wants it — is released immediately), remembers
+/// why, and waits: the session, its poll config and its counters all stay put
+/// so the user can hit Reconnect and carry on where they were, instead of
+/// being thrown back to the connection form with their setup lost.
 async fn run_poll_loop<R: Runtime>(
     app: AppHandle<R>,
     session_id: u64,
-    mut client: ModbusClient,
+    client: ModbusClient,
+    spec: ConnectSpec,
     mut cmd_rx: mpsc::Receiver<PollCommand>,
     cancel: CancellationToken,
 ) {
@@ -182,8 +196,17 @@ async fn run_poll_loop<R: Runtime>(
     let mut ticker = interval(Duration::from_millis(1000));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let transport = client.transport;
+    // `None` means the link is down; `link_down` says why. Every request path
+    // checks it, so nothing touches a socket that is known dead.
+    let mut client: Option<ModbusClient> = Some(client);
+    let mut link_down: Option<String> = None;
+    // Was the poll running when the link dropped? Reconnect resumes it.
+    let mut resume_on_reconnect = false;
 
     loop {
+        // Set by whichever arm hit a dead transport; handled once, below.
+        let mut fatal: Option<String> = None;
+
         tokio::select! {
             biased;
 
@@ -198,53 +221,105 @@ async fn run_poll_loop<R: Runtime>(
                         }
                         config = Some(new_config);
                     }
-                    Some(PollCommand::Start) => running = true,
-                    Some(PollCommand::Stop) => running = false,
+                    // Starting while the link is down isn't an error — it's a
+                    // queued intent, honoured the moment it comes back.
+                    Some(PollCommand::Start) => {
+                        if client.is_some() {
+                            running = true;
+                        } else {
+                            resume_on_reconnect = true;
+                        }
+                    }
+                    Some(PollCommand::Stop) => {
+                        running = false;
+                        resume_on_reconnect = false;
+                    }
                     Some(PollCommand::ResetStats) => stats.reset(),
                     Some(PollCommand::ReadOnce(cfg, responder)) => {
-                        let result = read_cycle(
-                            &app, &mut client, &cfg, session_id, transport,
-                            &mut sequence, &mut stats,
-                        ).await;
-                        let fatal = matches!(&result, Err(ReadOutcome::Fatal(_)));
-                        let _ = responder.send(result.map_err(|e| e.into_app_error()));
-                        if fatal {
-                            let _ = app.emit(
-                                "connection-lost",
-                                &ConnectionLostEvent {
-                                    session_id,
-                                    message: "Connection lost — transport closed".to_string(),
-                                },
-                            );
-                            break;
+                        match client.as_mut() {
+                            None => {
+                                let _ = responder.send(Err(link_down_error(&link_down)));
+                            }
+                            Some(c) => {
+                                let result = read_cycle(
+                                    &app, c, &cfg, session_id, transport,
+                                    &mut sequence, &mut stats,
+                                ).await;
+                                match result {
+                                    Err(ReadOutcome::Fatal(err)) => {
+                                        fatal = Some(err.to_string());
+                                        let _ = responder.send(Err(err));
+                                    }
+                                    other => {
+                                        let _ = responder
+                                            .send(other.map_err(|e| e.into_app_error()));
+                                    }
+                                }
+                            }
                         }
                     }
                     Some(PollCommand::Write(req, responder)) => {
-                        let result = write_cycle(
-                            &app, &mut client, req, session_id, transport,
-                            &mut sequence, &mut stats,
-                        ).await;
-                        let fatal = matches!(&result, Err(ReadOutcome::Fatal(_)));
-                        let _ = responder.send(result.map_err(|e| e.into_app_error()));
-                        if fatal {
-                            let _ = app.emit(
-                                "connection-lost",
-                                &ConnectionLostEvent {
+                        match client.as_mut() {
+                            None => {
+                                let _ = responder.send(Err(link_down_error(&link_down)));
+                            }
+                            Some(c) => {
+                                let result = write_cycle(
+                                    &app, c, req, session_id, transport,
+                                    &mut sequence, &mut stats,
+                                ).await;
+                                match result {
+                                    Err(ReadOutcome::Fatal(err)) => {
+                                        fatal = Some(err.to_string());
+                                        let _ = responder.send(Err(err));
+                                    }
+                                    other => {
+                                        let _ = responder
+                                            .send(other.map_err(|e| e.into_app_error()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Some(PollCommand::Reconnect(responder)) => {
+                        // Close first, always: reopening a serial port we still
+                        // hold fails with "busy" — pointing the finger at the
+                        // wrong program.
+                        let want_polling = running || resume_on_reconnect;
+                        running = false;
+                        if let Some(old) = client.take() {
+                            old.disconnect().await;
+                        }
+                        match spec.connect().await {
+                            Ok(fresh) => {
+                                client = Some(fresh);
+                                link_down = None;
+                                running = want_polling;
+                                resume_on_reconnect = false;
+                                let _ = responder.send(Ok(ReconnectResult {
                                     session_id,
-                                    message: "Connection lost — transport closed".to_string(),
-                                },
-                            );
-                            break;
+                                    polling: running,
+                                }));
+                            }
+                            Err(err) => {
+                                // Still down, and still the same session — the
+                                // user can fix the cause and try again.
+                                link_down = Some(err.to_string());
+                                resume_on_reconnect = want_polling;
+                                let _ = responder.send(Err(err));
+                            }
                         }
                     }
                     None => break,
                 }
             }
 
-            _ = ticker.tick(), if running && config.is_some() => {
-                let cfg = config.clone().expect("checked by select guard");
+            _ = ticker.tick(), if running => {
+                let (Some(cfg), Some(c)) = (config.clone(), client.as_mut()) else {
+                    continue;
+                };
                 match read_cycle(
-                    &app, &mut client, &cfg, session_id, transport,
+                    &app, c, &cfg, session_id, transport,
                     &mut sequence, &mut stats,
                 ).await {
                     Ok(result) => {
@@ -260,22 +335,39 @@ async fn run_poll_loop<R: Runtime>(
                             },
                         );
                     }
-                    Err(ReadOutcome::Fatal(err)) => {
-                        let _ = app.emit(
-                            "connection-lost",
-                            &ConnectionLostEvent {
-                                session_id,
-                                message: err.to_string(),
-                            },
-                        );
-                        break;
-                    }
+                    Err(ReadOutcome::Fatal(err)) => fatal = Some(err.to_string()),
                 }
             }
         }
+
+        if let Some(reason) = fatal {
+            resume_on_reconnect = running;
+            running = false;
+            link_down = Some(reason.clone());
+            if let Some(dead) = client.take() {
+                dead.disconnect().await;
+            }
+            let _ = app.emit(
+                "connection-lost",
+                &ConnectionLostEvent {
+                    session_id,
+                    message: reason,
+                },
+            );
+        }
     }
 
-    client.disconnect().await;
+    if let Some(c) = client {
+        c.disconnect().await;
+    }
+}
+
+fn link_down_error(link_down: &Option<String>) -> AppError {
+    AppError::LinkDown {
+        message: link_down
+            .clone()
+            .unwrap_or_else(|| "Connection lost — reconnect to continue".to_string()),
+    }
 }
 
 enum ReadOutcome {
@@ -314,6 +406,15 @@ fn map_read_error(
                 attempts: 1,
             };
             stats.record_failure(err.to_string(), true);
+            ReadOutcome::Recoverable(err)
+        }
+        // A garbled or foreign frame is not a dead link: the wire is alive and
+        // something answered. Keep polling — on a bus shared with another
+        // master this is the normal failure mode, and killing the session over
+        // it would make the scanner unusable exactly when it's most needed.
+        ReadError::Frame(reason) => {
+            let err = AppError::BadFrame { reason };
+            stats.record_failure(err.to_string(), false);
             ReadOutcome::Recoverable(err)
         }
         ReadError::Transport(reason) => {
@@ -863,15 +964,25 @@ mod engine_tests {
             .expect("failed to build mock tauri app")
     }
 
-    async fn connect_unit(unit_id: u8) -> Option<ModbusClient> {
-        let config = TcpConfig {
+    fn tcp_config(port: u16, unit_id: u8) -> TcpConfig {
+        TcpConfig {
             host: "127.0.0.1".into(),
-            port: 5020,
+            port,
             unit_id,
             timeout_ms: 1000,
             retries: 1,
-        };
-        ModbusClient::connect_tcp(&config).await.ok()
+        }
+    }
+
+    /// The same settings the session was opened with — what a reconnect reuses.
+    fn tcp_spec(port: u16, unit_id: u8) -> ConnectSpec {
+        ConnectSpec::Tcp(tcp_config(port, unit_id))
+    }
+
+    async fn connect_unit(unit_id: u8) -> Option<ModbusClient> {
+        ModbusClient::connect_tcp(&tcp_config(5020, unit_id))
+            .await
+            .ok()
     }
 
     fn collect_events(app: &App<MockRuntime>, name: &'static str) -> Arc<StdMutex<Vec<String>>> {
@@ -918,6 +1029,7 @@ mod engine_tests {
             Transport::Tcp,
             "test".into(),
             client,
+            tcp_spec(5020, 1),
         );
         let cfg = PollConfig {
             unit_id: 1,
@@ -955,6 +1067,118 @@ mod engine_tests {
             frames.lock().unwrap().len() >= 2,
             "expected a tx and rx frame per cycle"
         );
+    }
+
+    /// The whole point of parking a session instead of tearing it down: the
+    /// device disappears mid-poll, the session stays, and one `Reconnect`
+    /// puts data back on screen — no round trip through the setup form.
+    ///
+    /// Uses ModbusOpen's own simulator so it always runs, and rebinds the same
+    /// port to stand in for the device (or the program holding it) coming back.
+    #[tokio::test]
+    async fn a_dead_link_parks_the_session_and_reconnect_resumes_polling() {
+        use crate::modbus::server::SimulatorServer;
+        use crate::modbus::store::{ModbusStore, SlaveLayout};
+
+        fn store_with_data() -> Arc<ModbusStore> {
+            let store = Arc::new(ModbusStore::new());
+            store.reset(&[(
+                1,
+                SlaveLayout {
+                    coil_count: 0,
+                    discrete_count: 0,
+                    input_register_count: 0,
+                    holding_register_count: 16,
+                },
+            )]);
+            store.write_multiple_registers(1, 0, &[11, 22]).unwrap();
+            store
+        }
+
+        let app = test_app();
+        let server = SimulatorServer::bind(
+            "127.0.0.1:0".parse().unwrap(),
+            store_with_data(),
+            app.handle().clone(),
+            1,
+        )
+        .await
+        .unwrap();
+        let port = server.tcp_port();
+
+        let client = ModbusClient::connect_tcp(&tcp_config(port, 1))
+            .await
+            .unwrap();
+        let results = collect_events(&app, "poll-result");
+        let lost = collect_events(&app, "connection-lost");
+        let session = ScannerSession::spawn(
+            app.handle().clone(),
+            1,
+            Transport::Tcp,
+            "test".into(),
+            client,
+            tcp_spec(port, 1),
+        );
+
+        let cfg = PollConfig {
+            unit_id: 1,
+            blocks: vec![ReadBlock {
+                function: FunctionCode::ReadHoldingRegisters,
+                start_address: 0,
+                quantity: 2,
+            }],
+            interval_ms: 50,
+            format: DataFormat {
+                data_type: DataType::Uint16,
+                word_order: WordOrder::Cdab,
+                scale: 1.0,
+                offset: 0.0,
+            },
+        };
+        session.send(PollCommand::SetConfig(cfg)).await.unwrap();
+        session.send(PollCommand::Start).await.unwrap();
+        assert!(wait_for(&results, 1).await, "expected a first poll-result");
+
+        // The device goes away mid-poll.
+        server.shutdown().await;
+        assert!(
+            wait_for(&lost, 1).await,
+            "a dead transport must report connection-lost"
+        );
+
+        // Parked, not dead: the session still answers, with a clear reason.
+        let (tx, rx) = oneshot::channel();
+        session.send(PollCommand::Reconnect(tx)).await.unwrap();
+        assert!(
+            rx.await.unwrap().is_err(),
+            "reconnecting with nothing listening must fail, not hang or panic"
+        );
+
+        // Device comes back on the same port; one reconnect and data resumes.
+        let server = SimulatorServer::bind(
+            format!("127.0.0.1:{port}").parse().unwrap(),
+            store_with_data(),
+            app.handle().clone(),
+            1,
+        )
+        .await
+        .expect("rebind the simulator on the same port");
+
+        let before = results.lock().unwrap().len();
+        let (tx, rx) = oneshot::channel();
+        session.send(PollCommand::Reconnect(tx)).await.unwrap();
+        let reconnected = rx.await.unwrap().expect("reconnect should succeed");
+        assert!(
+            reconnected.polling,
+            "polling was running when the link dropped, so it must resume"
+        );
+        assert!(
+            wait_for(&results, before + 1).await,
+            "no poll-result after reconnect — the session didn't resume"
+        );
+
+        session.shutdown().await;
+        server.shutdown().await;
     }
 
     /// The scanner reading a meter whose parameters are scattered: one poll
@@ -1015,6 +1239,7 @@ mod engine_tests {
             Transport::Tcp,
             "test".into(),
             client,
+            tcp_spec(port, 1),
         );
 
         let cfg = PollConfig {
@@ -1093,6 +1318,7 @@ mod engine_tests {
             Transport::Tcp,
             "test".into(),
             client,
+            tcp_spec(5020, 1),
         );
         let mut cfg = PollConfig {
             unit_id: 1,
@@ -1153,6 +1379,7 @@ mod engine_tests {
             Transport::Tcp,
             "test".into(),
             client,
+            tcp_spec(5020, 1),
         );
         let bad_cfg = PollConfig {
             unit_id: 1,
@@ -1210,6 +1437,7 @@ mod engine_tests {
             Transport::Tcp,
             "test".into(),
             client,
+            tcp_spec(5020, 1),
         );
 
         let (tx, rx) = oneshot::channel();
@@ -1271,6 +1499,7 @@ mod engine_tests {
             Transport::Tcp,
             "test".into(),
             client,
+            tcp_spec(5020, 1),
         );
         let cfg = PollConfig {
             unit_id: 1,

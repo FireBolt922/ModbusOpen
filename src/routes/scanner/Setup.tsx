@@ -557,6 +557,8 @@ export default function ScannerSetup() {
   const navigate = useNavigate();
   const preferred = useScannerStore((s) => s.preferredTransport);
   const setPreferred = useScannerStore((s) => s.setPreferredTransport);
+  const linkDown = useScannerStore((s) => s.linkDown);
+  const connection = useScannerStore((s) => s.connection);
   const [portCount, setPortCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -588,6 +590,31 @@ export default function ScannerSetup() {
         <h1 className="text-lg font-heading font-semibold">{title}</h1>
         <div className="w-16" />
       </div>
+
+      {/* Arriving here after a dropped link used to be silent — a form with no
+          explanation. Say what happened, and keep the way back visible: the
+          previous session is parked, not thrown away. */}
+      {linkDown && (
+        <div
+          className="w-full max-w-2xl rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3"
+          role="alert"
+        >
+          <p className="text-sm font-medium text-destructive">
+            The last connection dropped
+          </p>
+          <p className="pt-0.5 text-sm text-muted-foreground">{linkDown}</p>
+          {connection && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => navigate("/scan/workspace")}
+            >
+              ← Back to the scan
+            </Button>
+          )}
+        </div>
+      )}
 
       {!preferred && (
         <TransportPicker

@@ -147,9 +147,19 @@ export type PollErrorEvent = {
   stats: PollStats;
 };
 
+/**
+ * The transport dropped. The session survives on the Rust side — polling is
+ * paused and the port released until the UI calls `reconnect()`.
+ */
 export type ConnectionLostEvent = {
   sessionId: number;
   message: string;
+};
+
+export type ReconnectResult = {
+  sessionId: number;
+  /** True if polling was running when the link dropped, so it resumed. */
+  polling: boolean;
 };
 
 export type Direction = "tx" | "rx";
@@ -308,6 +318,78 @@ export type MeterImportChoice = {
   newId?: string;
 };
 
+// ---------------------------------------------------------------------------
+// Service control (Linux only)
+// Mirrors src-tauri/src/modbus/types.rs — see docs/05-data-model.md.
+// ---------------------------------------------------------------------------
+
+/** Top-level split on the View screen. Capture is the default. */
+export type ServiceSubcategory = "capture" | "sync";
+
+/** One monitored unit as configured on the Configure tab. */
+export type ServiceEntry = {
+  /** Full unit name including the suffix, e.g. "meter-poll.service". */
+  unit: string;
+  description: string;
+  /** Free text; empty means "Uncategorised". */
+  category: string;
+  subcategory: ServiceSubcategory;
+};
+
+export type ServicesConfig = {
+  version: number;
+  services: ServiceEntry[];
+};
+
+/** A configured entry joined with what the system currently reports. */
+export type ServiceStatus = {
+  unit: string;
+  description: string;
+  category: string;
+  subcategory: ServiceSubcategory;
+  /** "loaded" | "not-found" | "masked" | "error" */
+  loadState: string;
+  /** "active" | "inactive" | "failed" | "activating" | "deactivating" */
+  activeState: string;
+  /** "running" | "dead" | "exited" | … */
+  subState: string;
+  /**
+   * "enabled" | "disabled" | "static" | "masked", or empty. Read-only: the app
+   * never writes it. A "disabled" unit is one the operator deliberately took
+   * down in a terminal, and auto-restart leaves it alone.
+   */
+  unitFileState: string;
+  /** RFC3339. Set while a stop is being held; the service returns at this time. */
+  autoStartAt?: string;
+};
+
+export type ServiceValidation = {
+  unit: string;
+  valid: boolean;
+  /** The unit's own Description, when the system knows it. */
+  description?: string;
+  message: string;
+};
+
+/** The 30-minute unlock that gates the Configure tab. */
+export type UnlockState = {
+  unlocked: boolean;
+  /** RFC3339. */
+  expiresAt?: string;
+};
+
+export type ServiceStatusEvent = {
+  sessionId: number;
+  services: ServiceStatus[];
+};
+
+export type ServiceLogEvent = {
+  sessionId: number;
+  unit: string;
+  /** Batched — never one event per line. */
+  lines: string[];
+};
+
 /** Mirrors src-tauri/src/error.rs::AppError (serde adjacently tagged). */
 export type AppError =
   | { kind: "SerialPortList"; message: string }
@@ -325,5 +407,13 @@ export type AppError =
       message: { code: number; name: string; hint: string };
     }
   | { kind: "ConnectionLost"; message: { reason: string } }
+  | { kind: "BadFrame"; message: { reason: string } }
+  | { kind: "LinkDown"; message: { message: string } }
   | { kind: "InvalidConfig"; message: string }
-  | { kind: "NotConnected" };
+  | { kind: "NotConnected" }
+  | { kind: "Unsupported"; message: { message: string } }
+  | {
+      kind: "ServiceControl";
+      message: { action: string; unit: string; reason: string };
+    }
+  | { kind: "Locked" };

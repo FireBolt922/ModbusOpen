@@ -315,13 +315,49 @@ pub enum AppError {
     #[error("Connection lost — {reason}")]
     ConnectionLost { reason: String },
 
+    #[error("Bad reply — {reason}")]
+    BadFrame { reason: String },
+
+    #[error("{message}")]
+    LinkDown { message: String },
+
     #[error("{0}")]
     InvalidConfig(String),
 
     #[error("Not connected")]
     NotConnected,
+
+    // Service control
+    #[error("{message}")]
+    Unsupported { message: String },
+
+    #[error("Can't {action} {unit} — {reason}")]
+    ServiceControl { action: String, unit: String, reason: String },
+
+    #[error("Enter the configuration password to do that.")]
+    Locked,
 }
 ```
+
+### Recoverable vs fatal
+
+The split matters more than the wording: it decides whether a session survives.
+
+| Outcome | Examples | What happens |
+|---|---|---|
+| `ModbusException` | Illegal data address, device busy | Poll continues; error line updates |
+| `Timeout` | No reply within `timeout_ms` | Poll continues |
+| `BadFrame` | CRC failure, header/function-code mismatch | Poll continues — a garbled or foreign reply means the wire is alive. Usually a second master on the bus, or two programs on one device |
+| `ConnectionLost` | Socket reset, peer hung up, port unplugged | Polling pauses, the port is **released**, the session is parked. The workspace keeps the config and offers Reconnect |
+| `LinkDown` | Any request issued while parked | Rejected with the reason the link went down |
+| `Unsupported` | Any service command on macOS/Windows | The Services screen renders a Linux-only notice instead of the tabs. Never reached in normal use — `services_supported()` gates the screen |
+| `ServiceControl` | `systemctl` refused or the unit failed to come up | Shown inline on the View screen; the service list keeps updating |
+| `Locked` | Stop or a config save after the 30-minute unlock lapsed | The unlock dialog opens and the action resumes once it succeeds |
+
+A parked session is reopened by the `reconnect` command, which rebuilds the transport from the
+`ConnectSpec` the session was created with and resumes polling if it was running. The session id,
+poll config, meter selection and counters all survive. **Never** navigate the user back to the
+setup form on a transport failure — that throws away the setup they need to retry.
 
 Every variant carries enough structure for the UI to render a heading plus an actionable hint.
 `ModbusException` in particular must map code → name → *what to try*:
@@ -390,3 +426,80 @@ per profile: `rename`, `overwrite`, or `skip`. `source` is optional in the file 
 `user`) and is re-tagged to `imported` on the way in, so the library can show where a meter
 came from.
 
+
+## Service control (Linux only)
+
+Types behind the Services screen. See `docs/04-ux-flows.md#services` for the screens and
+`src-tauri/src/services/` for the implementation.
+
+```rust
+pub enum ServiceSubcategory { Capture, Sync }   // snake_case on the wire
+
+pub struct ServiceEntry {          // what we persist
+    pub unit: String,              // full name, e.g. "meter-poll.service"
+    pub description: String,       // the operator's words; falls back to the unit's own
+    pub category: String,          // free text; empty renders as "Uncategorised"
+    pub subcategory: ServiceSubcategory,
+}
+
+pub struct ServicesConfig { pub version: u32, pub services: Vec<ServiceEntry> }
+
+pub struct ServiceStatus {         // an entry joined with what the system reports
+    pub unit: String,
+    pub description: String,
+    pub category: String,
+    pub subcategory: ServiceSubcategory,
+    pub load_state: String,        // loaded | not-found | masked | error
+    pub active_state: String,      // active | inactive | failed | activating | deactivating
+    pub sub_state: String,         // running | dead | exited | …
+    pub unit_file_state: String,   // enabled | disabled | static | masked | ""
+    pub auto_start_at: Option<DateTime<Utc>>,   // set while a stop is being held
+}
+
+pub struct ServiceValidation { pub unit: String, pub valid: bool,
+                               pub description: Option<String>, pub message: String }
+
+pub struct UnlockState { pub unlocked: bool, pub expires_at: Option<DateTime<Utc>> }
+
+pub struct ServiceStatusEvent { pub session_id: u64, pub services: Vec<ServiceStatus> }
+pub struct ServiceLogEvent { pub session_id: u64, pub unit: String, pub lines: Vec<String> }
+```
+
+### What the app is and isn't allowed to do
+
+The app runs exactly two mutating commands: `systemctl start` and `systemctl stop`. It never
+runs `enable`, `disable`, `mask`, or edits a unit file. Everything else it knows comes from
+`systemctl show` and `journalctl`.
+
+That is a deliberate boundary, not an omission. Taking a service down for good is a lasting
+change to the machine, so it stays a deliberate act by a person with a terminal — the Configure
+tab hands over `sudo systemctl disable --now <unit>` and reads the result back out of
+`unit_file_state`. Nothing this app does can leave a site in a state its own admins can't
+explain from their shell history.
+
+### The 30-minute hold
+
+`stop_service` is not "off", it's "off for 30 minutes". It writes a deadline to
+`<app-data>/services/holds.json` and a background task starts the unit again when the deadline
+passes. This is the whole point of the feature: an operator who stops capture to swap a meter
+and then gets pulled away does not lose the afternoon's data.
+
+Two things cancel a hold: a manual Start, and the operator disabling or masking the unit
+themselves — `unit_file_state` of `disabled` or `masked` means "I meant it", and the task
+leaves those alone. A failed automatic restart re-arms 60 seconds later rather than giving up.
+
+Deadlines survive an app restart. On launch, an expired deadline fires immediately and an
+unexpired one resumes counting down. They do **not** need to survive a reboot: the units are
+`enabled`, so systemd starts them itself.
+
+### The unlock
+
+One password (hard-coded, at the customer's request) buys 30 minutes of the Configure tab.
+Start and Stop are always free — View is open to anyone at the machine. The safety on Stop is
+the 30-minute return plus a confirmation dialog, not a gate.
+
+The expiry is owned by Rust and enforced in `commands/services.rs` on `save_services_config`,
+not in the UI, so there is one source of truth and a stale screen can't talk the backend into
+changing the monitored list. The password is an operational guard against a mis-click, **not**
+a secret: it ships in the binary, and the real bound on the app's authority is the polkit rule
+in `packaging/linux/polkit/`.

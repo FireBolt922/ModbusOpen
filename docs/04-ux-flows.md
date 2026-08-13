@@ -37,6 +37,11 @@ Plain language first ("Read from a device"), jargon second ("Modbus master") —
 blocked, an expert isn't slowed down. Recent connections reconnect in one click; that's the real
 fast path for anyone using this daily.
 
+Two more cards sit below the pair above: **Meters** (build and share a register map) and
+**Services** (start/stop the capture and sync services on this machine — Linux only). The
+Services card is shown on every platform; opening it off Linux explains why it can't work here
+rather than hiding the feature and leaving the user to wonder.
+
 ---
 
 ## Scanner → transport picker
@@ -288,6 +293,85 @@ tag overlap, which is otherwise a silent, baffling bug.
 Any value is directly editable (✎), which overrides the animation until you re-enable it — that's
 how you force a specific value to test the master's handling of it. Writes arriving from the master
 appear here live, with a brief highlight flash.
+
+---
+
+## Services  ★ Linux only
+
+Reached from the **Services** card on Home. On macOS and Windows the route renders a single
+card — "Linux only", naming the current OS — and nothing else. The gate is
+`services_supported()`, and every backend command re-checks it, so the platform boundary is
+real rather than cosmetic.
+
+### View
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  Services   ● Unlocked · 24 min left · Lock now    [View] Configure  │
+├──────────────────────────────────────────────────────────────────────┤
+│  [ Capture ]  Sync      Category: All  Meters  Gateway     Refresh   │
+├──────────────────────────────────────────────────────────────────────┤
+│  METERS                                                              │
+│  ● meter-poll.service      Meter capture poller   Running   Stop Logs│
+│  ● meter-agg.service       Aggregator             Running   Stop Logs│
+│                                                                      │
+│  GATEWAY                                                             │
+│  ● mqtt-bridge.service     MQTT bridge            Stopped            │
+│      Starts again at 14:32 · 27 min    Start  Keep stopped  Logs     │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+Capture/Sync is the top-level split and Capture is preselected — it's what an operator touches
+day to day. Categories group services underneath, and the category chips filter within the
+selected group.
+
+**Start** and **Stop** are both open on View — no password. Stop opens a warning first: the
+service will stay down for 30 minutes, then start again by itself, and the operator can start
+it sooner from the same tab. A stopped service shows its automatic return time counting down,
+because that reassurance is the feature.
+
+**Keep stopped** opens the disable instructions: the app hands over
+`sudo systemctl disable --now <unit>` for the operator to run in a terminal, then reads the
+result back. Once a unit reads `disabled`, the countdown is replaced by "Disabled — stays down"
+and the automatic restart leaves it alone.
+
+**Logs** opens a virtualized panel below the list with 200 lines of history, then following
+live, with pause and copy.
+
+### Configure
+
+Password-gated as a whole page, not a modal — the entire tab is protected, so a modal over a
+form the user can already read would be theatre.
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  Add services                                                        │
+│  Type one service name, or several separated by commas.              │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │ meter-poll, mqtt-bridge, data-sync                             │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│  [Validate]   Checks each name against this machine.                 │
+│  ──────────────────────────────────────────────────────────────────  │
+│  ✓ meter-poll.service    Found — currently active.                   │
+│      [ Meter capture poller                                       ]  │
+│  ✓ mqtt-bridge.service   Found — currently inactive.                 │
+│      [ MQTT bridge                                                ]  │
+│  ✕ data-sync.service     There's no service called data-sync…        │
+│  ──────────────────────────────────────────────────────────────────  │
+│  Category [ Meters          ]   Meters  Gateway                      │
+│  Group    [ Capture ] Sync                                           │
+│  [Add 2 services]                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+Validate is a gate, not a hint: **Add** doesn't appear until at least one name checks out. Each
+validated row gets its own description field, pre-filled from what systemd already reports — so
+adding ten services doesn't mean typing ten descriptions, and the multi-add case works exactly
+like the single-add case.
+
+Below the form, the monitored list is grouped by category with the description, category and
+group editable in place, plus Remove and the disable helper per row. Removing a service stops
+ModbusOpen watching it and does nothing at all to the service — the screen says so.
 
 ---
 

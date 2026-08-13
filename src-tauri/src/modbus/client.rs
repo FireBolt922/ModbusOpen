@@ -16,12 +16,13 @@ use tokio_serial::{DataBits, FlowControl, Parity as SerialParity, SerialPortBuil
 
 use super::types::{FunctionCode, Parity, RtuConfig, TcpConfig, Transport, WireAddress};
 use crate::error::{
-    exception_name_and_hint, humanize_serial_error, map_serial_open_error, AppError,
+    exception_name_and_hint, humanize_frame_error, humanize_link_error, map_serial_open_error,
+    AppError,
 };
 
 /// Outcome of a single read/write. Distinguishes "device answered with an
 /// error" (not fatal — keep polling) from "the transport is dead" (fatal —
-/// stop the task).
+/// stop polling and offer a reconnect).
 #[derive(Debug)]
 pub enum ReadError {
     Exception {
@@ -30,7 +31,40 @@ pub enum ReadError {
         hint: String,
     },
     Timeout,
+    /// Something came back but it wasn't ours: bad CRC, or a header that
+    /// doesn't match the request. The link is still up — this is what a second
+    /// master on the same bus looks like, and it must not kill the session.
+    Frame(String),
+    /// The transport itself is gone: socket reset, port unplugged, peer closed.
     Transport(String),
+}
+
+/// How to (re)open this connection. The poll task keeps one so a dropped link
+/// can be rebuilt in place, without sending the user back to the setup form.
+#[derive(Debug, Clone)]
+pub enum ConnectSpec {
+    Tcp(TcpConfig),
+    Rtu(RtuConfig),
+}
+
+impl ConnectSpec {
+    pub async fn connect(&self) -> Result<ModbusClient, AppError> {
+        match self {
+            ConnectSpec::Tcp(config) => ModbusClient::connect_tcp(config).await,
+            ConnectSpec::Rtu(config) => ModbusClient::connect_rtu(config).await,
+        }
+    }
+}
+
+/// Is this I/O failure the transport dying, or one bad frame on a live link?
+///
+/// tokio-modbus reports a failed RTU checksum as `InvalidData` inside
+/// `Error::Transport`, so the enum variant alone can't be trusted — the kind
+/// has to be inspected. Treating a CRC error as a dead link is exactly the bug
+/// that used to drop the user back to the connection form mid-scan.
+fn io_kind_is_fatal(kind: std::io::ErrorKind) -> bool {
+    use std::io::ErrorKind::*;
+    !matches!(kind, InvalidData | InvalidInput | TimedOut | WouldBlock)
 }
 
 fn exception_code_to_u8(code: ExceptionCode) -> u8 {
@@ -206,13 +240,23 @@ impl ModbusClient {
         function: FunctionCode,
         start: WireAddress,
         unit_id: u8,
+        transport: Transport,
     ) -> Result<T, ReadError> {
         match result {
             Err(tokio_modbus::Error::Transport(e)) => {
-                Err(ReadError::Transport(humanize_serial_error(&e.to_string())))
+                if io_kind_is_fatal(e.kind()) {
+                    Err(ReadError::Transport(humanize_link_error(
+                        transport,
+                        &e.to_string(),
+                    )))
+                } else {
+                    Err(ReadError::Frame(humanize_frame_error(&e.to_string())))
+                }
             }
+            // A header or function-code mismatch means the device (or the bus)
+            // is alive and answering — just not to us. Recoverable.
             Err(tokio_modbus::Error::Protocol(e)) => {
-                Err(ReadError::Transport(humanize_serial_error(&e.to_string())))
+                Err(ReadError::Frame(humanize_frame_error(&e.to_string())))
             }
             Ok(Err(exception)) => {
                 let code = exception_code_to_u8(exception);
@@ -234,6 +278,7 @@ impl ModbusClient {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
         self.alloc_tid();
+        let transport = self.transport;
 
         let call = async {
             match function {
@@ -251,7 +296,7 @@ impl ModbusClient {
 
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
-            Ok(result) => Self::map_modbus_result(result, function, start, unit_id),
+            Ok(result) => Self::map_modbus_result(result, function, start, unit_id, transport),
         }
     }
 
@@ -267,6 +312,7 @@ impl ModbusClient {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
         self.alloc_tid();
+        let transport = self.transport;
 
         let call = async {
             match function {
@@ -282,7 +328,7 @@ impl ModbusClient {
 
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
-            Ok(result) => Self::map_modbus_result(result, function, start, unit_id),
+            Ok(result) => Self::map_modbus_result(result, function, start, unit_id, transport),
         }
     }
 
@@ -295,12 +341,17 @@ impl ModbusClient {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
         self.alloc_tid();
+        let transport = self.transport;
         let call = self.ctx.write_single_coil(address, value);
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
-            Ok(result) => {
-                Self::map_modbus_result(result, FunctionCode::WriteSingleCoil, address, unit_id)
-            }
+            Ok(result) => Self::map_modbus_result(
+                result,
+                FunctionCode::WriteSingleCoil,
+                address,
+                unit_id,
+                transport,
+            ),
         }
     }
 
@@ -313,12 +364,17 @@ impl ModbusClient {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
         self.alloc_tid();
+        let transport = self.transport;
         let call = self.ctx.write_single_register(address, value);
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
-            Ok(result) => {
-                Self::map_modbus_result(result, FunctionCode::WriteSingleRegister, address, unit_id)
-            }
+            Ok(result) => Self::map_modbus_result(
+                result,
+                FunctionCode::WriteSingleRegister,
+                address,
+                unit_id,
+                transport,
+            ),
         }
     }
 
@@ -331,12 +387,17 @@ impl ModbusClient {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
         self.alloc_tid();
+        let transport = self.transport;
         let call = self.ctx.write_multiple_coils(address, values);
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
-            Ok(result) => {
-                Self::map_modbus_result(result, FunctionCode::WriteMultipleCoils, address, unit_id)
-            }
+            Ok(result) => Self::map_modbus_result(
+                result,
+                FunctionCode::WriteMultipleCoils,
+                address,
+                unit_id,
+                transport,
+            ),
         }
     }
 
@@ -349,6 +410,7 @@ impl ModbusClient {
         self.set_unit_id(unit_id);
         self.maybe_inter_frame_delay().await;
         self.alloc_tid();
+        let transport = self.transport;
         let call = self.ctx.write_multiple_registers(address, values);
         match timeout(self.timeout, call).await {
             Err(_) => Err(ReadError::Timeout),
@@ -357,6 +419,7 @@ impl ModbusClient {
                 FunctionCode::WriteMultipleRegisters,
                 address,
                 unit_id,
+                transport,
             ),
         }
     }
@@ -696,6 +759,20 @@ mod smoke {
             }
             Err(other) => panic!("expected SerialOpen or Ok, got {other:?}"),
         }
+    }
+
+    /// A failed RTU checksum arrives as `InvalidData` inside
+    /// `Error::Transport`. Calling that a dead link is what used to kick the
+    /// user back to the connection form the moment another master spoke on
+    /// the bus, so the classification is pinned here.
+    #[test]
+    fn only_a_genuinely_dead_transport_counts_as_fatal() {
+        use std::io::ErrorKind;
+        assert!(!io_kind_is_fatal(ErrorKind::InvalidData), "CRC / bad frame");
+        assert!(!io_kind_is_fatal(ErrorKind::TimedOut));
+        assert!(io_kind_is_fatal(ErrorKind::BrokenPipe));
+        assert!(io_kind_is_fatal(ErrorKind::ConnectionReset));
+        assert!(io_kind_is_fatal(ErrorKind::UnexpectedEof));
     }
 
     #[test]

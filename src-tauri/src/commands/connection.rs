@@ -1,10 +1,11 @@
 use tauri::State;
+use tokio::sync::oneshot;
 
 use crate::error::AppError;
-use crate::modbus::client::ModbusClient;
-use crate::modbus::poll::ScannerSession;
+use crate::modbus::client::{ConnectSpec, ModbusClient};
+use crate::modbus::poll::{PollCommand, ScannerSession};
 use crate::modbus::types::{
-    ConnectionInfo, ConnectionStatus, Parity, RtuConfig, TcpConfig, Transport,
+    ConnectionInfo, ConnectionStatus, Parity, ReconnectResult, RtuConfig, TcpConfig, Transport,
 };
 use crate::modbus::validate::{validate_rtu_config, validate_tcp_config};
 use crate::AppState;
@@ -23,6 +24,7 @@ async fn install_session(
     transport: Transport,
     summary: String,
     client: ModbusClient,
+    spec: ConnectSpec,
 ) -> ConnectionInfo {
     let mut guard = state.scanner.lock().await;
     if let Some(existing) = guard.take() {
@@ -32,7 +34,7 @@ async fn install_session(
     let session_id = state
         .next_session_id
         .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let session = ScannerSession::spawn(app, session_id, transport, summary.clone(), client);
+    let session = ScannerSession::spawn(app, session_id, transport, summary.clone(), client, spec);
     let info = ConnectionInfo {
         session_id,
         transport,
@@ -52,7 +54,15 @@ pub async fn tcp_connect(
 
     let client = ModbusClient::connect_tcp(&config).await?;
     let summary = format!("{}:{} (unit {})", config.host, config.port, config.unit_id);
-    Ok(install_session(app, &state, Transport::Tcp, summary, client).await)
+    Ok(install_session(
+        app,
+        &state,
+        Transport::Tcp,
+        summary,
+        client,
+        ConnectSpec::Tcp(config),
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -73,7 +83,30 @@ pub async fn rtu_connect(
         config.stop_bits,
         config.unit_id
     );
-    Ok(install_session(app, &state, Transport::Rtu, summary, client).await)
+    Ok(install_session(
+        app,
+        &state,
+        Transport::Rtu,
+        summary,
+        client,
+        ConnectSpec::Rtu(config),
+    )
+    .await)
+}
+
+/// Reopen the current session's transport with the settings it was created
+/// with. The session id, poll config and counters survive, so the workspace
+/// picks up where it left off instead of restarting from the setup form.
+#[tauri::command]
+pub async fn reconnect(state: State<'_, AppState>) -> Result<ReconnectResult, AppError> {
+    let guard = state.scanner.lock().await;
+    let session = guard.as_ref().ok_or(AppError::NotConnected)?;
+
+    let (tx, rx) = oneshot::channel();
+    session.send(PollCommand::Reconnect(tx)).await?;
+    rx.await.map_err(|_| AppError::ConnectionLost {
+        reason: "poll task stopped before responding".to_string(),
+    })?
 }
 
 #[tauri::command]

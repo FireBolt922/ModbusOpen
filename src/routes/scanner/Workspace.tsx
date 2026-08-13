@@ -29,6 +29,7 @@ import {
   onPollError,
   onPollResult,
   readOnce,
+  reconnect,
   resetPollStats,
   setPollConfig,
   startPoll,
@@ -65,6 +66,8 @@ export default function ScannerWorkspace() {
   const setPollConfigLocal = useScannerStore((s) => s.setPollConfigLocal);
   const polling = useScannerStore((s) => s.polling);
   const setPolling = useScannerStore((s) => s.setPolling);
+  const linkDown = useScannerStore((s) => s.linkDown);
+  const reconnecting = useScannerStore((s) => s.reconnecting);
   const rows = useScannerStore((s) => s.rows);
   const rowsStale = useScannerStore((s) => s.rowsStale);
   const stats = useScannerStore((s) => s.stats);
@@ -74,6 +77,9 @@ export default function ScannerWorkspace() {
   const applyPollResult = useScannerStore((s) => s.applyPollResult);
   const applyPollError = useScannerStore((s) => s.applyPollError);
   const applyConnectionLost = useScannerStore((s) => s.applyConnectionLost);
+  const setReconnecting = useScannerStore((s) => s.setReconnecting);
+  const applyReconnected = useScannerStore((s) => s.applyReconnected);
+  const applyReconnectFailed = useScannerStore((s) => s.applyReconnectFailed);
   const resetSession = useScannerStore((s) => s.resetSession);
 
   const [busy, setBusy] = useState(false);
@@ -101,6 +107,8 @@ export default function ScannerWorkspace() {
   const sessionIdRef = useRef<number | null>(null);
   sessionIdRef.current = connection?.sessionId ?? null;
 
+  // Only sends you to setup when there is no session at all — a cold load of
+  // this route. A session whose link dropped stays here; see the banner below.
   useEffect(() => {
     if (!connection) {
       navigate("/scan", { replace: true });
@@ -113,10 +121,9 @@ export default function ScannerWorkspace() {
         applyPollResult(r.sessionId, r.registers, r.stats, r.sequence),
       ),
       onPollError((e) => applyPollError(e.sessionId, e.message, e.stats)),
-      onConnectionLost((e) => {
-        applyConnectionLost(e.sessionId, e.message);
-        navigate("/scan", { replace: true });
-      }),
+      // No navigation here. Losing the link is not a reason to throw away the
+      // meter, the read plan and the poll settings the user just entered.
+      onConnectionLost((e) => applyConnectionLost(e.sessionId, e.message)),
       onFrame((entry) => {
         if (sessionIdRef.current !== entry.sessionId) return;
         if (framesPausedRef.current) return;
@@ -132,7 +139,7 @@ export default function ScannerWorkspace() {
     return () => {
       void Promise.all(unsubs).then((fns) => fns.forEach((fn) => fn()));
     };
-  }, [applyPollResult, applyPollError, applyConnectionLost, navigate]);
+  }, [applyPollResult, applyPollError, applyConnectionLost]);
 
 
   // Re-decode the last poll with each parameter's own format (Rust codec —
@@ -330,6 +337,22 @@ export default function ScannerWorkspace() {
     }
   }
 
+  /**
+   * Reopen the same transport, same settings, same session. Everything on
+   * screen — meter, read plan, format, counters — is still valid, so this is
+   * one click rather than a walk back through the connection form.
+   */
+  async function handleReconnect() {
+    setReconnecting(true);
+    setActionError(null);
+    try {
+      const result = await reconnect();
+      applyReconnected(result.polling);
+    } catch (err) {
+      applyReconnectFailed(errorMessage(err));
+    }
+  }
+
   async function handleDisconnect() {
     setBusy(true);
     try {
@@ -370,6 +393,9 @@ export default function ScannerWorkspace() {
   };
   const bitMode = isBitFc(block.function);
   const maxQty = bitMode ? 2000 : 125;
+  // Anything that puts bytes on the wire is off while the link is down —
+  // Reconnect in the banner is the one action that can help.
+  const offline = linkDown !== null;
 
   if (!connection) {
     return null;
@@ -378,7 +404,12 @@ export default function ScannerWorkspace() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2">
-        <ConnectionPill connected summary={connection.summary} />
+        <ConnectionPill
+          connected
+          linkDown={linkDown !== null}
+          reconnecting={reconnecting}
+          summary={connection.summary}
+        />
         {/* Counters ride in the top bar — they're the first thing you check
             when a device goes quiet, so they sit beside the connection, not
             in a footer three screens below the controls that caused them. */}
@@ -403,6 +434,45 @@ export default function ScannerWorkspace() {
           </Button>
         </div>
       </header>
+
+      {/* The link dropped. Everything the user set up is still here and still
+          valid, so this offers the two moves that actually help — try the same
+          settings again, or go change them — instead of deciding for them. */}
+      {linkDown && (
+        <div
+          className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-destructive/40 bg-destructive/10 px-4 py-3"
+          role="alert"
+        >
+          <div className="flex-1 min-w-64">
+            <p className="text-sm font-medium text-destructive">
+              Link down — polling paused
+            </p>
+            <p className="text-sm text-muted-foreground">{linkDown}</p>
+            <p className="pt-0.5 text-xs text-muted-foreground">
+              Your settings, meter and counters are kept. The port has been
+              released, so another program can take it — or you can take it
+              back with Reconnect.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              disabled={reconnecting}
+              onClick={() => void handleReconnect()}
+            >
+              {reconnecting ? "Reconnecting…" : "↻ Reconnect"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={reconnecting}
+              onClick={() => navigate("/scan")}
+            >
+              Change settings
+            </Button>
+          </div>
+        </div>
+      )}
 
       <section className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
         <MeterSelector onSelect={(p) => void applyMeterProfile(p)} />
@@ -537,7 +607,8 @@ export default function ScannerWorkspace() {
           ) : (
             <Button
               size="sm"
-              disabled={busy}
+              disabled={busy || offline}
+              title={offline ? "Reconnect first — the link is down" : undefined}
               onClick={() => void handleStart()}
             >
               ▶ Start
@@ -546,7 +617,8 @@ export default function ScannerWorkspace() {
           <Button
             variant="outline"
             size="sm"
-            disabled={busy}
+            disabled={busy || offline}
+            title={offline ? "Reconnect first — the link is down" : undefined}
             onClick={() => void handleReadOnce()}
           >
             ↻ Read once
@@ -554,6 +626,8 @@ export default function ScannerWorkspace() {
           <Button
             variant="outline"
             size="sm"
+            disabled={offline}
+            title={offline ? "Reconnect first — the link is down" : undefined}
             onClick={() => setShowWrite((v) => !v)}
           >
             Write
@@ -579,14 +653,15 @@ export default function ScannerWorkspace() {
       {/* One error line for the whole screen. Poll failures used to live in the
           footer and action failures up here, which meant two places to look.
           It follows the *current* state only: a good response clears it, so a
-          single timeout doesn't leave a red line over live data. */}
-      {(actionError ?? lastError) && (
+          single timeout doesn't leave a red line over live data. While the link
+          is down the banner above already says why, so this doesn't repeat it. */}
+      {(actionError ?? (offline ? null : lastError)) && (
         <div
           className="flex items-start gap-2 border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive"
           role="alert"
         >
           <span className="flex-1">
-            {actionError ?? lastError}
+            {actionError ?? (offline ? null : lastError)}
           </span>
           {actionError && (
             <button
@@ -621,7 +696,7 @@ export default function ScannerWorkspace() {
       </main>
 
       <WritePanel
-        open={showWrite}
+        open={showWrite && !offline}
         onClose={() => setShowWrite(false)}
         unitId={pollConfig.unitId}
         defaultAddress={block.startAddress}
