@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { DisableInstructions } from "@/components/services/DisableInstructions";
 import { LogViewer } from "@/components/services/LogViewer";
 import { ServiceRow } from "@/components/services/ServiceRow";
@@ -40,6 +41,8 @@ export default function ServicesView() {
   const categoryFilter = useServicesStore((s) => s.categoryFilter);
   const toggleCategory = useServicesStore((s) => s.toggleCategory);
   const clearCategoryFilter = useServicesStore((s) => s.clearCategoryFilter);
+  const search = useServicesStore((s) => s.search);
+  const setSearch = useServicesStore((s) => s.setSearch);
   const setServices = useServicesStore((s) => s.setServices);
   const setWatchSessionId = useServicesStore((s) => s.setWatchSessionId);
   const applyStatus = useServicesStore((s) => s.applyStatus);
@@ -120,8 +123,13 @@ export default function ServicesView() {
   }, [visible]);
 
   const grouped = useMemo(() => {
+    const query = search.trim().toLowerCase();
     const active = visible.filter(
-      (s) => categoryFilter.length === 0 || categoryFilter.includes(categoryOf(s)),
+      (s) =>
+        (categoryFilter.length === 0 || categoryFilter.includes(categoryOf(s))) &&
+        (query === "" ||
+          s.unit.toLowerCase().includes(query) ||
+          s.description.toLowerCase().includes(query)),
     );
     const map = new Map<string, ServiceStatus[]>();
     for (const service of active) {
@@ -129,7 +137,7 @@ export default function ServicesView() {
       map.set(key, [...(map.get(key) ?? []), service]);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [visible, categoryFilter]);
+  }, [visible, categoryFilter, search]);
 
   async function doStart(unit: string) {
     setBusyUnit(unit);
@@ -256,10 +264,30 @@ export default function ServicesView() {
           </div>
         )}
 
+        <div className="relative ml-auto w-56">
+          <Input
+            type="search"
+            value={search}
+            aria-label="Search services by name or description"
+            placeholder="Search name or description…"
+            className="h-7 pr-7 text-xs"
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search !== "" && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
+              onClick={() => setSearch("")}
+            >
+              ×
+            </button>
+          )}
+        </div>
+
         <Button
           variant="outline"
           size="xs"
-          className="ml-auto"
           onClick={refresh}
         >
           Refresh
@@ -282,7 +310,9 @@ export default function ServicesView() {
         ) : grouped.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Nothing in {subcategory === "capture" ? "Capture" : "Sync"} matches
-            this filter. Try another category, or switch groups above.
+            {search.trim() !== "" ? ` “${search.trim()}”` : " this filter"}. Try
+            another {search.trim() !== "" ? "search term" : "category"}, or
+            switch groups above.
           </p>
         ) : (
           <div className="flex flex-col gap-6">

@@ -29,6 +29,8 @@ type ServicesState = {
   subcategory: ServiceSubcategory;
   /** Category names to show; empty means "all". */
   categoryFilter: string[];
+  /** Free-text filter over unit name and description; empty means "all". */
+  search: string;
 
   /** Session id of the live status watcher; events from any other are stale. */
   watchSessionId: number | null;
@@ -46,6 +48,7 @@ type ServicesState = {
   setSubcategory: (subcategory: ServiceSubcategory) => void;
   toggleCategory: (category: string) => void;
   clearCategoryFilter: () => void;
+  setSearch: (search: string) => void;
   setWatchSessionId: (id: number | null) => void;
 
   openLog: (sessionId: number, unit: string) => void;
@@ -70,6 +73,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
   subcategory: "capture",
   categoryFilter: [],
+  search: "",
 
   watchSessionId: null,
 
@@ -91,6 +95,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         : [...s.categoryFilter, category],
     })),
   clearCategoryFilter: () => set({ categoryFilter: [] }),
+  setSearch: (search) => set({ search }),
   setWatchSessionId: (watchSessionId) => set({ watchSessionId }),
 
   openLog: (logSessionId, logUnit) =>
