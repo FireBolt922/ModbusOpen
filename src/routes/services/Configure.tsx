@@ -241,7 +241,7 @@ export default function ServicesConfigure() {
         </div>
       )}
 
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-6">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-6">
         {/* ---- Step 1: name the services --------------------------------- */}
         <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
           <div>
@@ -450,69 +450,78 @@ export default function ServicesConfigure() {
                     statuses.find((s) => s.unit === entry.unit) ?? null;
                   return (
                     <div key={entry.unit} className="flex flex-col gap-2">
-                      <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
-                        <span className="min-w-0 flex-1 truncate font-mono text-sm">
-                          {entry.unit}
-                        </span>
-
-                        <Input
-                          aria-label={`Description for ${entry.unit}`}
-                          className="h-8 w-56"
-                          defaultValue={entry.description}
-                          placeholder="Description"
-                          onBlur={(e) => {
-                            if (e.target.value !== entry.description) {
-                              void updateEntry(entry.unit, {
-                                description: e.target.value,
-                              });
-                            }
-                          }}
-                        />
-
-                        <Input
-                          aria-label={`Category for ${entry.unit}`}
-                          className="h-8 w-40"
-                          defaultValue={entry.category}
-                          placeholder="Category"
-                          onBlur={(e) => {
-                            if (e.target.value !== entry.category) {
-                              void updateEntry(entry.unit, {
-                                category: e.target.value,
-                              });
-                            }
-                          }}
-                        />
-
-                        <SubcategoryToggle
-                          size="xs"
-                          value={entry.subcategory}
-                          onChange={(value) =>
-                            void updateEntry(entry.unit, { subcategory: value })
-                          }
-                        />
-
-                        {status && (
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            onClick={() =>
-                              setDisableFor(
-                                disableFor === entry.unit ? null : entry.unit,
-                              )
-                            }
+                      <div className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <span
+                            className="min-w-0 break-all font-mono text-sm"
+                            title={entry.unit}
                           >
-                            Disable…
-                          </Button>
-                        )}
+                            {entry.unit}
+                          </span>
+                          <div className="flex shrink-0 gap-1">
+                            {status && (
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                onClick={() =>
+                                  setDisableFor(
+                                    disableFor === entry.unit
+                                      ? null
+                                      : entry.unit,
+                                  )
+                                }
+                              >
+                                Disable…
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => void removeEntry(entry.unit)}
+                              disabled={saving}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
 
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => void removeEntry(entry.unit)}
-                          disabled={saving}
-                        >
-                          Remove
-                        </Button>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <Input
+                            aria-label={`Description for ${entry.unit}`}
+                            className="h-8 min-w-0 flex-1"
+                            defaultValue={entry.description}
+                            placeholder="Description"
+                            onBlur={(e) => {
+                              if (e.target.value !== entry.description) {
+                                void updateEntry(entry.unit, {
+                                  description: e.target.value,
+                                });
+                              }
+                            }}
+                          />
+                          <Input
+                            aria-label={`Category for ${entry.unit}`}
+                            className="h-8 w-full sm:w-36"
+                            defaultValue={entry.category}
+                            placeholder="Category"
+                            onBlur={(e) => {
+                              if (e.target.value !== entry.category) {
+                                void updateEntry(entry.unit, {
+                                  category: e.target.value,
+                                });
+                              }
+                            }}
+                          />
+                          <SubcategoryToggle
+                            size="xs"
+                            value={entry.subcategory}
+                            onChange={(value) =>
+                              void updateEntry(entry.unit, {
+                                subcategory: value,
+                              })
+                            }
+                          />
+                        </div>
                       </div>
 
                       {disableFor === entry.unit && status && (

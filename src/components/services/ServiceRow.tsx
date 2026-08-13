@@ -49,9 +49,11 @@ export function ServiceRow({
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate font-mono text-sm">{service.unit}</span>
+        <span className="break-all font-mono text-sm" title={service.unit}>
+          {service.unit}
+        </span>
         {service.description && (
-          <span className="truncate text-xs text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {service.description}
           </span>
         )}

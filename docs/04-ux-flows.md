@@ -369,9 +369,11 @@ validated row gets its own description field, pre-filled from what systemd alrea
 adding ten services doesn't mean typing ten descriptions, and the multi-add case works exactly
 like the single-add case.
 
-Below the form, the monitored list is grouped by category with the description, category and
-group editable in place, plus Remove and the disable helper per row. Removing a service stops
-ModbusOpen watching it and does nothing at all to the service — the screen says so.
+Below the form, the monitored list is grouped by category. Each row shows the full unit name
+on its own line, then a full-width description field, category, and group — so a long
+`modbus-….service` name is never clipped to `modb…`. Remove and the disable helper sit on
+the name line. Removing a service stops ModbusOpen watching it and does nothing at all to
+the service — the screen says so.
 
 ---
 
