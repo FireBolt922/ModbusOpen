@@ -3,9 +3,12 @@
 Real register maps, extracted from the working simulator scripts at
 `carbon_minus_iot_firmware_v2/iot_firmware_v2/modbus_simulator/`.
 
-These are **ground truth** — they've been read by actual meters in the field. They serve three
-purposes: they ship as simulator profiles, they annotate the scanner's table, and they're the
-conformance data for verifying the decoder ([testing §5](../06-testing.md#5-verify-against-the-existing-scripts)).
+These are **ground truth** — they've been read by actual meters in the field. They are
+reference data for the decoder and example inputs for the app; they are not bundled runtime
+profiles. The repository's `profiles/` directory contains example `.mbmeter.json` packs that
+users import manually. The app stores imported profiles in the user's meter library rather than
+loading files from the repository automatically. They remain useful as conformance data for
+verifying the decoder ([testing §5](../06-testing.md#5-verify-against-the-existing-scripts)).
 
 ## What the original scripts actually are
 
@@ -148,9 +151,12 @@ gives a two-slave test — exactly what the M1 "change unit ID on the fly" accep
 
 ## Implementation notes
 
-1. Ship all three as JSON in `profiles/` using the schema in
-   [data model](../05-data-model.md#device-profile).
-2. Loading a profile into the **simulator** creates the slave, blocks, and tags.
-3. Loading a profile into the **scanner** applies just the `names` and per-row formats to the table
-   — so you get labelled rows against real hardware. Cheap to build, disproportionately useful.
-4. Profile 1 + profile 3 loaded together (units 1 and 2 on one TCP port) is the standard M4 demo.
+1. The files under `profiles/` are example `.mbmeter.json` packs, not files the app bundles or
+   loads automatically. The format is documented in
+   [Meter pack (shareable)](../05-data-model.md#meter-pack-shareable).
+2. Import a pack from the app's **Meters → Import** action. The import path previews each profile,
+   validates it, and lets the user skip, overwrite, or rename duplicate IDs.
+3. Imported profiles are stored in the user's OS app-data `meters/` library and can then be used
+   by the app's supported meter workflows.
+4. To propose a new meter pack, add the datasheet/source details to the
+   [meter profile issue template](../../issues/9) before opening a PR.
