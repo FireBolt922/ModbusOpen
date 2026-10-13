@@ -41,7 +41,6 @@ master at it. Both modes share one connection layer, one decoder, and one table 
 | Rust↔UI transport | `invoke` for commands, `emit` channel for the poll stream | [docs/03](docs/03-architecture.md#ipc-contract) |
 
 **Open decisions** (do not block M0–M1):
-- License: MIT vs Apache-2.0
 - App icon / brand
 - Whether to code-sign the macOS build for v1 (costs $99/yr) or ship unsigned with instructions
 

@@ -111,13 +111,6 @@ impl Default for DataFormat {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AddressBase {
-    ZeroBased,
-    OneBased,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TcpConfig {
@@ -638,17 +631,12 @@ pub struct MeterImportChoice {
 
 /// The top-level split on the View screen. Capture is the default because it's
 /// what an operator touches day to day.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceSubcategory {
+    #[default]
     Capture,
     Sync,
-}
-
-impl Default for ServiceSubcategory {
-    fn default() -> Self {
-        Self::Capture
-    }
 }
 
 /// One monitored unit, as configured on the Configure screen. This is what we

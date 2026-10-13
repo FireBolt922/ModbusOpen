@@ -1,0 +1,31 @@
+name: Meter profile
+description: Share or request a .mbmeter.json register map for a device
+labels: [meter-profile]
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Device make and model
+      placeholder: e.g. Schneider PM5110, Eastron SDM630
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Are you sharing or requesting a profile?
+      options:
+        - Sharing a profile I made
+        - Requesting a profile
+    validations:
+      required: true
+  - type: textarea
+    id: profile
+    attributes:
+      label: Profile or register map
+      description: Attach the .mbmeter.json (drag it in), or link the vendor's register map / datasheet.
+  - type: checkboxes
+    id: tested
+    attributes:
+      label: Verification
+      options:
+        - label: I've checked these values against a real device

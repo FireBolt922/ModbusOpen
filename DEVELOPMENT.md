@@ -92,7 +92,7 @@ the local pymodbus test rig — start it once and leave it running while you dev
 through the **Scan** side:
 
 ```bash
-# one-time setup (already done if .venv/ exists in this repo)
+# one-time setup (already done if .venv/ exists in your checkout)
 python3 -m venv .venv && source .venv/bin/activate
 pip install 'pymodbus[serial]>=3.11'
 

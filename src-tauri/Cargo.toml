@@ -3,6 +3,8 @@ name = "modbusopen"
 version = "1.1.1"
 description = "ModbusOpen — Modbus scanner and simulator"
 authors = ["Ganesh"]
+license = "MIT"
+repository = "https://github.com/FireBolt922/ModbusOpen"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -44,4 +44,4 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for prerequisites and platform-specific set
 
 ## License
 
-TBD (intended: MIT or Apache-2.0 — decide before first public release)
+[MIT](LICENSE). Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
