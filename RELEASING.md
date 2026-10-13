@@ -62,6 +62,9 @@ and from **Actions → pages → Run workflow**.
 - **test fails:** nothing was changed. Fix `main` and run the release again.
 - **prepare fails with "main moved":** someone merged while the run was starting. Run it again.
 - **prepare fails with "Tag … already exists":** pick a higher version.
+- **prepare fails with "A draft release for … already exists":** an old draft (for example
+  from a manual build before this workflow existed) uses that tag name. Delete it under
+  **Releases → Drafts** and run again. Nothing was pushed.
 - **A build fails:** the version commit, tag and draft release already exist. Fix the cause
   on `main` if needed, then open the failed run and use **Re-run failed jobs**. It reuses the
   same tag and draft and publishes once everything builds. To abandon the release instead,
