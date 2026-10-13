@@ -536,3 +536,54 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 }
+
+
+#[cfg(test)]
+mod profile_pack_files {
+    use super::{parse_import_payload, validate_meter_profile};
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn every_shipped_meter_pack_imports_and_validates() {
+        let profiles_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../profiles");
+        let entries = fs::read_dir(&profiles_dir).unwrap_or_else(|err| {
+            panic!("could not read shipped profiles directory {}: {err}", profiles_dir.display())
+        });
+
+        let mut pack_count = 0;
+        for entry in entries {
+            let entry = entry.expect("could not read an entry in shipped profiles directory");
+            let path = entry.path();
+            let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+            if !file_name.ends_with(".mbmeter.json") {
+                continue;
+            }
+
+            pack_count += 1;
+            let text = fs::read_to_string(&path).unwrap_or_else(|err| {
+                panic!("could not read meter pack {}: {err}", path.display())
+            });
+            let profiles = parse_import_payload(&text).unwrap_or_else(|err| {
+                panic!("meter pack {} could not be imported: {err}", path.display())
+            });
+            assert!(
+                !profiles.is_empty(),
+                "meter pack {} contains no profiles",
+                path.display()
+            );
+
+            for profile in profiles {
+                validate_meter_profile(&profile).unwrap_or_else(|err| {
+                    panic!("meter pack {} contains an invalid profile: {err}", path.display())
+                });
+            }
+        }
+
+        assert!(
+            pack_count > 0,
+            "no *.mbmeter.json files found under {}",
+            profiles_dir.display()
+        );
+    }
+}
