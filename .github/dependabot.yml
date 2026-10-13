@@ -1,13 +1,23 @@
 version: 2
 updates:
-  # One grouped PR per ecosystem per month keeps the noise down.
+  # Minor + patch bumps arrive as one grouped PR per ecosystem per month.
+  # Major bumps are left out of the group so each gets its own PR — one
+  # breaking upgrade shouldn't hold back every safe one.
+  #
+  # Tauri: the @tauri-apps/* npm packages and the tauri* Rust crates must stay
+  # on the same major/minor, and Dependabot updates npm and cargo in separate
+  # PRs, so only patch bumps are automatic. Upgrade Tauri minors by hand, both
+  # sides in one PR (CI's "tauri versions aligned" step checks this).
   - package-ecosystem: npm # also covers pnpm-lock.yaml
     directory: /
     schedule:
       interval: monthly
     groups:
       npm:
-        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "@tauri-apps/*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: cargo
     directory: /src-tauri
@@ -15,7 +25,10 @@ updates:
       interval: monthly
     groups:
       cargo:
-        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "tauri*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

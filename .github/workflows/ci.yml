@@ -54,6 +54,18 @@ jobs:
       - name: install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `tauri build` refuses to run when the @tauri-apps/* npm packages and
+      # their Rust crates are on different major/minor versions, but `pnpm
+      # build` doesn't care — catch it here instead of in the release run.
+      # `tauri info` reports the mismatch yet still exits 0, hence the grep.
+      - name: tauri versions aligned
+        run: |
+          pnpm tauri info 2>&1 | tee tauri-info.txt
+          if grep -q "version mismatched Tauri packages" tauri-info.txt; then
+            echo "::error::@tauri-apps/* npm packages and Tauri Rust crates are on different major/minor versions"
+            exit 1
+          fi
+
       - name: build
         run: pnpm build
 
