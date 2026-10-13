@@ -26,6 +26,7 @@ Run the same checks CI runs — a PR can't merge until they pass:
 
 ```bash
 pnpm build
+pnpm test:scripts
 cd src-tauri
 cargo fmt -- --check
 cargo clippy --all-targets -- -D warnings

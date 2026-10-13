@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  bumpVersion,
+  compareVersions,
   normalizeVersion,
+  resolveVersion,
   runProcess,
   runVersionUpdate,
 } from "./update-version.mjs";
@@ -207,6 +210,75 @@ test("rejects the current version and dirty version files", () => {
           execute: fixtureExecutor(root),
         }),
       /Version files already have uncommitted changes/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("bumps patch, minor and major like npm", () => {
+  assert.equal(bumpVersion("1.1.1", "patch"), "1.1.2");
+  assert.equal(bumpVersion("1.1.1", "minor"), "1.2.0");
+  assert.equal(bumpVersion("1.1.1", "major"), "2.0.0");
+  // A prerelease is finished by the bump it is heading to.
+  assert.equal(bumpVersion("1.3.0-beta.1", "patch"), "1.3.0");
+  assert.equal(bumpVersion("1.3.0-beta.1", "minor"), "1.3.0");
+  assert.equal(bumpVersion("2.0.0-rc.1", "major"), "2.0.0");
+  assert.equal(bumpVersion("1.3.1-beta.1", "minor"), "1.4.0");
+  assert.throws(() => bumpVersion("1.1.1", "huge"), /Unknown bump/);
+});
+
+test("resolves keywords and explicit versions", () => {
+  assert.equal(resolveVersion("minor", "0.4.2"), "0.5.0");
+  assert.equal(resolveVersion(" v0.6.0 ", "0.4.2"), "0.6.0");
+});
+
+test("orders versions by semver precedence", () => {
+  assert.equal(compareVersions("1.10.0", "1.9.9"), 1);
+  assert.equal(compareVersions("1.2.3", "1.2.3"), 0);
+  assert.equal(compareVersions("1.2.3-beta.1", "1.2.3"), -1);
+  assert.equal(compareVersions("1.2.3", "1.2.3-rc.1"), 1);
+});
+
+test("bump keyword with --no-verify updates Cargo.lock without cargo or pnpm", () => {
+  const root = createFixture();
+  try {
+    const execute = (command, args, options = {}) => {
+      assert.ok(
+        !/^(cargo|pnpm)(\.cmd)?$/.test(command),
+        `${command} must not run when verify is false`,
+      );
+      return runProcess(command, args, options);
+    };
+    const result = runVersionUpdate({
+      repoRoot: root,
+      versionInput: "minor",
+      verify: false,
+      execute,
+    });
+    assert.equal(result.version, "0.2.0");
+    assert.deepEqual(readFixtureVersions(root), [
+      "0.2.0",
+      "0.2.0",
+      "0.2.0",
+      "0.2.0",
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects going backwards", () => {
+  const root = createFixture();
+  try {
+    assert.throws(
+      () =>
+        runVersionUpdate({
+          repoRoot: root,
+          versionInput: "0.1.0",
+          execute: fixtureExecutor(root),
+        }),
+      /lower than the current version 0\.1\.1/,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

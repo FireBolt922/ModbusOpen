@@ -27,3 +27,6 @@ development
 venv
 .venv/
 .env
+
+# GitHub Pages build output (scripts/build-site.mjs)
+_site/

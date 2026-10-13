@@ -55,6 +55,62 @@ export function normalizeVersion(input) {
   return version;
 }
 
+export const BUMP_KINDS = ["patch", "minor", "major"];
+
+function parseCore(version) {
+  const [core, prerelease] = version.split("+")[0].split(/-(.*)/s);
+  const [major, minor, patch] = core.split(".").map(Number);
+  return { major, minor, patch, prerelease: prerelease || undefined };
+}
+
+/**
+ * npm-style bump: `patch` on 1.2.3 → 1.2.4, `minor` → 1.3.0, `major` → 2.0.0.
+ * A prerelease is "finished" by the bump it is heading to, so `patch` on
+ * 1.3.0-beta.1 → 1.3.0 and `minor` on 1.3.0-beta.1 → 1.3.0.
+ */
+export function bumpVersion(current, kind) {
+  const v = parseCore(normalizeVersion(current));
+  switch (kind) {
+    case "patch":
+      return v.prerelease
+        ? `${v.major}.${v.minor}.${v.patch}`
+        : `${v.major}.${v.minor}.${v.patch + 1}`;
+    case "minor":
+      return v.prerelease && v.patch === 0
+        ? `${v.major}.${v.minor}.0`
+        : `${v.major}.${v.minor + 1}.0`;
+    case "major":
+      return v.prerelease && v.minor === 0 && v.patch === 0
+        ? `${v.major}.0.0`
+        : `${v.major + 1}.0.0`;
+    default:
+      throw new Error(
+        `Unknown bump “${kind}” (expected ${BUMP_KINDS.join(", ")}).`,
+      );
+  }
+}
+
+/** Accepts a bump keyword or an explicit version. */
+export function resolveVersion(input, current) {
+  const trimmed = typeof input === "string" ? input.trim() : input;
+  return BUMP_KINDS.includes(trimmed)
+    ? bumpVersion(current, trimmed)
+    : normalizeVersion(trimmed);
+}
+
+/** SemVer precedence on major.minor.patch, then "prerelease < release". */
+export function compareVersions(a, b) {
+  const x = parseCore(a);
+  const y = parseCore(b);
+  for (const key of ["major", "minor", "patch"]) {
+    if (x[key] !== y[key]) return x[key] < y[key] ? -1 : 1;
+  }
+  if (x.prerelease === y.prerelease) return 0;
+  if (!x.prerelease) return 1;
+  if (!y.prerelease) return -1;
+  return x.prerelease < y.prerelease ? -1 : 1;
+}
+
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
 }
@@ -131,6 +187,17 @@ function updateVersionSources(repoRoot, version) {
       return `${before}${version}${after}`;
     }),
   );
+
+  // Rewrite our own entry in Cargo.lock directly, so a bump doesn't need a
+  // full `cargo check` (CI's release job runs without Tauri's system libs).
+  const lockPath = path.join(repoRoot, "src-tauri", "Cargo.lock");
+  const lockPattern =
+    /(\[\[package\]\]\r?\nname = "modbusopen"\r?\nversion = ")[^"\r\n]+(")/;
+  const cargoLock = readFileSync(lockPath, "utf8");
+  if (!lockPattern.test(cargoLock)) {
+    throw new Error("Could not update the modbusopen package in Cargo.lock.");
+  }
+  writeFileSync(lockPath, cargoLock.replace(lockPattern, `$1${version}$2`));
 }
 
 function ensureVersionFilesAreClean(repoRoot, execute) {
@@ -149,14 +216,20 @@ export function runVersionUpdate({
   repoRoot,
   versionInput,
   commitMessage,
+  verify = true,
   execute = runProcess,
 }) {
-  const version = normalizeVersion(versionInput);
   const currentVersion = versionsAt(repoRoot).packageJson;
   assertVersionsMatch(repoRoot, currentVersion);
+  const version = resolveVersion(versionInput, currentVersion);
 
   if (version === currentVersion) {
     throw new Error(`The project is already at version ${version}.`);
+  }
+  if (compareVersions(version, currentVersion) < 0) {
+    throw new Error(
+      `${version} is lower than the current version ${currentVersion}.`,
+    );
   }
 
   const messageWasProvided = commitMessage !== undefined;
@@ -170,12 +243,14 @@ export function runVersionUpdate({
   ensureVersionFilesAreClean(repoRoot, execute);
   updateVersionSources(repoRoot, version);
 
-  execute(commandName("cargo"), [
-    "check",
-    "--manifest-path",
-    "src-tauri/Cargo.toml",
-  ], { cwd: repoRoot });
-  execute(commandName("pnpm"), ["build"], { cwd: repoRoot });
+  if (verify) {
+    execute(commandName("cargo"), [
+      "check",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+    ], { cwd: repoRoot });
+    execute(commandName("pnpm"), ["build"], { cwd: repoRoot });
+  }
 
   assertVersionsMatch(repoRoot, version);
   execute("git", ["diff", "--check", "--", ...VERSION_FILES], {
@@ -193,11 +268,12 @@ export function runVersionUpdate({
 
 function usage() {
   return [
-    "Usage: pnpm version:set <version> [commit message]",
+    "Usage: pnpm version:set <patch|minor|major|version> [commit message] [--no-verify]",
     "",
     "Examples:",
+    "  pnpm version:set patch",
     '  pnpm version:set 0.1.2 "chore: prepare v0.1.2"',
-    "  pnpm version:set v0.2.0",
+    "  pnpm version:set v0.2.0 --no-verify   # skip cargo check + pnpm build",
   ].join("\n");
 }
 
@@ -208,7 +284,10 @@ function main() {
     return;
   }
 
-  const [versionInput, ...messageParts] = args;
+  const verify = !args.includes("--no-verify");
+  const [versionInput, ...messageParts] = args.filter(
+    (arg) => arg !== "--no-verify",
+  );
   const commitMessage = messageParts.length > 0 ? messageParts.join(" ") : undefined;
   const repoRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -218,6 +297,7 @@ function main() {
     repoRoot,
     versionInput,
     commitMessage,
+    verify,
   });
   console.log(
     `Updated ModbusOpen to v${result.version} and committed as “${result.message}”.`,

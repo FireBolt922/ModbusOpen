@@ -1,0 +1,462 @@
+/* Panel-grey enclosure, one reflective LCD, one signal-yellow button. */
+:root {
+  --panel: #e2e4df;
+  --panel-raised: #eef0eb;
+  --ink: #1f2a2e;
+  --ink-soft: #56625f;
+  --rule: #b8bdb4;
+  --link: #0f5e7a;
+  --signal: #f2b300;
+  --signal-press: #d99f00;
+  --signal-ink: #1f2a2e;
+  --bezel: #3a4345;
+  --lcd: #a9b894;
+  --lcd-ink: #1f2b16;
+  --lcd-ghost: rgba(31, 43, 22, 0.08);
+  --focus: #0f5e7a;
+
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "Barlow Semi Condensed", var(--font-body);
+
+  color-scheme: light;
+}
+
+/* Dark: the enclosure goes dark and the LCD switches to a backlit display. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --panel: #171b1c;
+    --panel-raised: #1f2526;
+    --ink: #e4e7e1;
+    --ink-soft: #9ca59f;
+    --rule: #364041;
+    --link: #82c8dd;
+    --bezel: #0b0f10;
+    --lcd: #12200e;
+    --lcd-ink: #b8e46d;
+    --lcd-ghost: rgba(184, 228, 109, 0.07);
+    --focus: #82c8dd;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --panel: #171b1c;
+  --panel-raised: #1f2526;
+  --ink: #e4e7e1;
+  --ink-soft: #9ca59f;
+  --rule: #364041;
+  --link: #82c8dd;
+  --bezel: #0b0f10;
+  --lcd: #12200e;
+  --lcd-ink: #b8e46d;
+  --lcd-ghost: rgba(184, 228, 109, 0.07);
+  --focus: #82c8dd;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+}
+
+a {
+  color: var(--link);
+  text-underline-offset: 0.18em;
+}
+
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-head);
+  line-height: 1.1;
+  margin: 0;
+}
+
+.topbar,
+main,
+.footer {
+  width: min(1080px, 100% - 32px);
+  margin-inline: auto;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 20px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  text-decoration: none;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 20px;
+  font-weight: 500;
+}
+
+/* ---- Hero ------------------------------------------------------------ */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: center;
+  padding-block: 64px 56px;
+}
+
+.hero h1 {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  max-width: 34em;
+  margin: 18px 0 28px;
+  color: var(--ink-soft);
+  font-size: 1.1875rem;
+}
+
+.primary {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.download-btn {
+  display: inline-grid;
+  gap: 2px;
+  padding: 14px 22px 13px;
+  background: var(--signal);
+  color: var(--signal-ink);
+  border-radius: 4px;
+  text-decoration: none;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18);
+}
+
+.download-btn:hover {
+  background: var(--signal-press);
+}
+
+.download-btn:active {
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.2);
+}
+
+.download-btn strong {
+  font-family: var(--font-head);
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.download-btn span {
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.alt-links {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+.muted {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* ---- The meter: the one loud element ---------------------------------- */
+
+.meter {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.bezel {
+  padding: 18px;
+  background: var(--bezel);
+  border-radius: 10px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35), 0 10px 24px -14px rgba(0, 0, 0, 0.6);
+}
+
+.lcd {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  padding: 22px 24px;
+  background: var(--lcd);
+  border-radius: 3px;
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.28);
+}
+
+.lcd svg {
+  width: 100%;
+  max-height: 120px;
+  overflow: visible;
+}
+
+.seg {
+  fill: var(--lcd-ghost);
+}
+
+.seg.on {
+  fill: var(--lcd-ink);
+}
+
+.lcd-text {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 2.5rem;
+  color: var(--lcd-ink);
+}
+
+.meter figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+.meter-label {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---- Sections ---------------------------------------------------------- */
+
+.block {
+  padding-block: 40px;
+  border-top: 1px solid var(--rule);
+}
+
+.block h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.platforms {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--panel-raised);
+}
+
+.platform {
+  padding: 20px 22px;
+}
+
+.platform + .platform {
+  border-left: 1px solid var(--rule);
+}
+
+.platform h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.files a {
+  font-weight: 500;
+}
+
+.size {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.prose {
+  max-width: 70ch;
+}
+
+.prose :first-child {
+  margin-top: 0;
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+  font-size: 1.25rem;
+  margin: 1.2em 0 0.4em;
+}
+
+.prose ul {
+  padding-left: 1.2em;
+}
+
+.prose code {
+  font-size: 0.92em;
+  background: var(--panel-raised);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+/* ---- History ----------------------------------------------------------- */
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.history > li {
+  border-bottom: 1px solid var(--rule);
+}
+
+.history summary {
+  display: grid;
+  grid-template-columns: minmax(14rem, max-content) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: baseline;
+  padding: 14px 4px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.history summary::-webkit-details-marker {
+  display: none;
+}
+
+.history summary::after {
+  content: "+";
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--ink-soft);
+}
+
+.history details[open] summary::after {
+  content: "\2212";
+}
+
+.history .ver {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.history .when {
+  color: var(--ink-soft);
+}
+
+.tag {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.tag.current {
+  border-color: transparent;
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+
+.history-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
+  gap: 32px;
+  padding: 4px 4px 24px;
+}
+
+.history-body h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.footer {
+  padding-block: 32px 48px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+/* ---- Small screens ----------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding-block: 40px;
+  }
+
+  .platforms {
+    grid-template-columns: 1fr;
+  }
+
+  .platform + .platform {
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .history summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .history .when {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .history-body {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .topbar nav {
+    gap: 14px;
+    font-size: 0.9375rem;
+  }
+}
