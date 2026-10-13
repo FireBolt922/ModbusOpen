@@ -6,6 +6,7 @@ import {
   formatLatency,
   functionCodeLabel,
 } from "@/lib/format";
+import { formatFrameLog } from "@/lib/frame-log";
 import type { FrameLogEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -53,23 +54,11 @@ export function FrameLog({
   if (!open) return null;
 
   function copyAll() {
-    const text = visible
-      .map((f) => {
-        const dir = f.direction.toUpperCase();
-        const t = f.timestamp;
-        const hex = formatBytesHex(f.bytes);
-        const rtt = f.rttMs != null ? ` rtt=${f.rttMs.toFixed(1)}ms` : "";
-        const exc = f.isException ? " EXCEPTION" : "";
-        return `${t} ${dir} FC=${f.function.toString(16)}${exc}${rtt}\n  ${hex}`;
-      })
-      .join("\n");
-    void navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(formatFrameLog(visible));
   }
 
   function exportTxt() {
-    const text = visible
-      .map((f) => `${f.direction}\t${formatBytesHex(f.bytes)}`)
-      .join("\n");
+    const text = formatFrameLog(visible);
     const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
