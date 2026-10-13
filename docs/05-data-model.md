@@ -267,10 +267,15 @@ JSON. Versioned from day one so v2 can read v1 files.
 
 ## Device profile
 
-Same envelope, `"kind": "profile"`. Ships in `profiles/`, loadable by the simulator, and its
-`names` map can also be applied to the scanner's table — so a profile does double duty as a
-register-map annotation. See [reference/device-profiles.md](reference/device-profiles.md) for the
-three real profiles.
+The original design used a `"kind": "profile"` envelope for simulator and scanner register maps.
+The current app does not ship or auto-load files from the repository's `profiles/` directory;
+that directory contains example `.mbmeter.json` packs for users to import manually. Imported
+profiles are user-owned and live under the OS app-data `meters/` directory. See
+[Meter pack (shareable)](#meter-pack-shareable) for the current import format and
+[reference/device-profiles.md](reference/device-profiles.md) for the example register maps.
+
+The JSON shape below is retained as a design reference; it does not describe files that the app
+loads automatically.
 
 ```json
 {
