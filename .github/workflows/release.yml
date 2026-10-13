@@ -80,6 +80,8 @@ jobs:
         env:
           BUMP: ${{ inputs.version || inputs.bump }}
           PRERELEASE_INPUT: ${{ inputs.prerelease }}
+          # Listing draft releases needs write access, which GITHUB_TOKEN lacks here.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           # The tests ran on GITHUB_SHA. Refuse to release anything newer.
           if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
@@ -97,6 +99,16 @@ jobs:
           tag="v$version"
           if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
             echo "::error::Tag $tag already exists. Pick a different version."
+            exit 1
+          fi
+
+          # A draft release can carry this tag name without the git tag
+          # existing (e.g. left behind by an old manual build). Its files
+          # would end up in this release, so stop before anything is pushed.
+          leftover=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\") | .html_url" | head -n1)
+          if [ -n "$leftover" ]; then
+            echo "::error::A draft release for $tag already exists: $leftover — delete it (Releases → Drafts) and run the release again. Nothing was pushed."
             exit 1
           fi
 
@@ -132,12 +144,18 @@ jobs:
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
           # Draft releases can't be looked up by tag, so search the list.
-          # A re-run reuses the draft from the first attempt.
           find_id() {
-            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" \
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
               --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n1
           }
           id=$(find_id)
+          # Only a re-run ("Re-run failed jobs") may reuse a draft: its own,
+          # from the first attempt. prepare already rejects leftovers, so
+          # finding one on attempt 1 means something raced it — stop.
+          if [ -n "$id" ] && [ "$GITHUB_RUN_ATTEMPT" = "1" ]; then
+            echo "::error::A release for $TAG appeared before this run created one. Check Releases and re-run."
+            exit 1
+          fi
           if [ -z "$id" ]; then
             flags=(--draft --verify-tag --generate-notes --title "ModbusOpen $TAG")
             if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
