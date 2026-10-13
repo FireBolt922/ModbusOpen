@@ -1,6 +1,6 @@
 [package]
 name = "modbusopen"
-version = "1.1.1"
+version = "1.1.2"
 description = "ModbusOpen — Modbus scanner and simulator"
 authors = ["Ganesh"]
 license = "MIT"
