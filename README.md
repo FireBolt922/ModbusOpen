@@ -5,6 +5,8 @@ need to know *"is this device actually talking, and what is it saying?"* in unde
 
 Think ModScan/ModSim, but modern, free, and pleasant to use.
 
+**[Download ModbusOpen](https://firebolt922.github.io/ModbusOpen/)** for Windows, macOS or Linux.
+
 | | |
 |---|---|
 | **Scanner** | Modbus master. Connect over TCP or RTU, poll registers, decode them into real values, write back. |
@@ -32,6 +34,7 @@ see [PLAN.md](PLAN.md) for the milestone breakdown
 | [docs/reference/](docs/reference/) | Modbus protocol reference — function codes, word order, serial timing |
 | [AGENTS.md](AGENTS.md) | Operating manual for AI agents working in this repo |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | **Run it locally.** Prerequisites, setup, dev/build/test commands, troubleshooting |
+| [RELEASING.md](RELEASING.md) | Cutting a release, the download site, and the `RELEASE_TOKEN` setup |
 
 ## Quick start
 

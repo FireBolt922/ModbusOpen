@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Download ModbusOpen</title>
+    <meta
+      name="description"
+      content="Download ModbusOpen, a free Modbus TCP/RTU scanner and simulator for Windows, macOS and Linux."
+    />
+    <link rel="icon" href="icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./">
+        <img src="icon.png" alt="" width="28" height="28" />
+        <span>ModbusOpen</span>
+      </a>
+      <nav aria-label="Project links">
+        <a id="link-source" href="https://github.com/FireBolt922/ModbusOpen">Source code</a>
+        <a id="link-contribute" href="https://github.com/FireBolt922/ModbusOpen/blob/main/CONTRIBUTING.md">Contribute</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <h1 id="hero-title">Download ModbusOpen</h1>
+          <p class="lede">
+            Scan and simulate Modbus TCP and RTU devices. See what a meter, PLC or drive is actually
+            saying, decoded into real values. Free and open source for Windows, macOS and Linux.
+          </p>
+          <div id="primary" class="primary" aria-live="polite">
+            <p class="muted">Loading the latest release…</p>
+          </div>
+        </div>
+
+        <figure class="meter" aria-labelledby="meter-caption">
+          <div class="bezel">
+            <div class="lcd" id="lcd" role="img" aria-label="Latest version"></div>
+          </div>
+          <figcaption id="meter-caption">
+            <span class="meter-label">Latest stable version</span>
+            <span id="meter-date" class="meter-date"></span>
+          </figcaption>
+        </figure>
+      </section>
+
+      <section id="downloads" class="block" aria-labelledby="downloads-title" hidden>
+        <h2 id="downloads-title">All downloads</h2>
+        <div class="platforms" id="platforms"></div>
+      </section>
+
+      <section id="notes" class="block" aria-labelledby="notes-title" hidden>
+        <h2 id="notes-title">What's new</h2>
+        <div class="notes prose" id="notes-body"></div>
+      </section>
+
+      <section id="history" class="block" aria-labelledby="history-title" hidden>
+        <h2 id="history-title">Release history</h2>
+        <ol class="history" id="history-list"></ol>
+      </section>
+
+      <noscript>
+        <p class="block">
+          This page needs JavaScript to list downloads.
+          <a href="https://github.com/FireBolt922/ModbusOpen/releases">Get ModbusOpen from GitHub Releases instead.</a>
+        </p>
+      </noscript>
+    </main>
+
+    <footer class="footer">
+      <p>
+        ModbusOpen is MIT licensed. Installers are built by
+        <a href="https://github.com/FireBolt922/ModbusOpen/actions/workflows/release.yml">GitHub Actions</a>
+        from the tagged source. <span id="generated"></span>
+      </p>
+    </footer>
+  </body>
+</html>

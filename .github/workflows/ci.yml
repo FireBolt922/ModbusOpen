@@ -2,18 +2,24 @@ name: ci
 
 on:
   workflow_dispatch:
+  # The release workflow runs this as its test gate before bumping anything.
+  workflow_call:
   pull_request:
     branches: [main]
+  # Every branch, so a push gets feedback before a PR exists. Tags are left
+  # out: a release tag is only pushed after these checks already passed.
   push:
-    branches: [main]
+    branches: ["**"]
 
 # Read-only token: this runs on PRs from forks once the repo is public.
 permissions:
   contents: read
 
-# A new push to the same PR cancels the in-flight run instead of queueing.
+# A new push to the same branch/PR cancels the in-flight run instead of
+# queueing. `github.workflow` is the *caller's* name under workflow_call, so a
+# release's test run never cancels (or is cancelled by) a normal push run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -53,6 +59,9 @@ jobs:
 
       - name: install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: script tests
+        run: pnpm test:scripts
 
       # `tauri build` refuses to run when the @tauri-apps/* npm packages and
       # their Rust crates are on different major/minor versions, but `pnpm

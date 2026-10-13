@@ -1,83 +1,172 @@
 name: release
 
-# Manual-only. Builds installers for macOS (.dmg, universal), Windows (.msi)
-# and/or Linux (.AppImage / .deb) and attaches them to a draft GitHub
-# release. Nothing runs on push/tag — trigger it from the Actions tab
-# ("Run workflow"), pick the tag to publish under and which platform(s) to
-# build, and pick the branch/tag to build *from* via the standard "Use
-# workflow from" ref selector at the top of that same dialog.
+# One-click release: Actions → release → Run workflow → pick the bump.
+#
+#   test      full CI suite on the current main
+#   prepare   bump package.json / tauri.conf.json / Cargo.toml / Cargo.lock,
+#             commit "chore: bump version to vX.Y.Z" to main, tag vX.Y.Z
+#   create    draft GitHub release with generated notes
+#   build     installers for macOS (Apple Silicon + Intel), Windows, Linux
+#   publish   un-draft the release (marked latest unless it's a pre-release)
+#   pages     rebuild the download site
+#
+# The bump commit and tag are pushed with the RELEASE_TOKEN secret — a
+# fine-grained token with "Contents: Read and write" on this repo. It acts as
+# the repo admin, whom the protect-main and protect-release-tags rulesets let
+# through; the built-in GITHUB_TOKEN is blocked by both. See RELEASING.md.
+#
+# If a build fails after the tag is pushed, fix the cause and use
+# "Re-run failed jobs" on this run: it reuses the same tag and draft release.
 
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release tag to create/publish under (e.g. v0.1.1)"
-        required: true
-        type: string
-      platform:
-        description: "Which platform(s) to build"
-        required: true
+      bump:
+        description: "Version bump"
         type: choice
-        default: all
-        options:
-          - all
-          - macos
-          - windows
-          - ubuntu
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: "Or an exact version, e.g. 1.3.0-beta.1 (overrides bump)"
+        type: string
+        required: false
+      prerelease:
+        description: "Pre-release (not shown as the latest stable download)"
+        type: boolean
+        default: false
+
+# One release at a time; never cancel one half-way through.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
-  # Turns the `platform` choice into a matrix, computed once instead of
-  # letting every matrix entry run and then skip itself — keeps the Actions
-  # UI free of "skipped" jobs for platforms nobody asked to build.
-  plan:
+  test:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  prepare:
+    needs: test
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.plan.outputs.matrix }}
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+      prerelease: ${{ steps.bump.outputs.prerelease }}
     steps:
-      - id: plan
+      - name: check RELEASE_TOKEN
         env:
-          PLATFORM: ${{ inputs.platform }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
-          case "$PLATFORM" in
-            macos)
-              matrix='{"include":[
-                {"platform":"macos-latest","args":"--target aarch64-apple-darwin"},
-                {"platform":"macos-latest","args":"--target x86_64-apple-darwin"}
-              ]}'
-              ;;
-            windows)
-              matrix='{"include":[{"platform":"windows-latest","args":""}]}'
-              ;;
-            ubuntu)
-              matrix='{"include":[{"platform":"ubuntu-22.04","args":""}]}'
-              ;;
-            all)
-              matrix='{"include":[
-                {"platform":"macos-latest","args":"--target aarch64-apple-darwin"},
-                {"platform":"macos-latest","args":"--target x86_64-apple-darwin"},
-                {"platform":"ubuntu-22.04","args":""},
-                {"platform":"windows-latest","args":""}
-              ]}'
-              ;;
-            *)
-              echo "::error::Unknown platform input '$PLATFORM'" >&2
-              exit 1
-              ;;
-          esac
-          # Collapse to one line — GITHUB_OUTPUT can't hold embedded newlines.
-          echo "matrix=$(echo "$matrix" | tr -d '\n' | tr -s ' ')" >> "$GITHUB_OUTPUT"
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::The RELEASE_TOKEN secret is missing. See RELEASING.md for how to create it."
+            exit 1
+          fi
 
-  publish-tauri:
-    needs: plan
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          token: ${{ secrets.RELEASE_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      - name: bump version, commit and tag
+        id: bump
+        env:
+          BUMP: ${{ inputs.version || inputs.bump }}
+          PRERELEASE_INPUT: ${{ inputs.prerelease }}
+        run: |
+          # The tests ran on GITHUB_SHA. Refuse to release anything newer.
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "::error::main moved after this run started. Run the release again."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Tests already passed in the `test` job, so skip the local build.
+          node scripts/update-version.mjs "$BUMP" --no-verify
+
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "::error::Tag $tag already exists. Pick a different version."
+            exit 1
+          fi
+
+          prerelease=false
+          if [ "$PRERELEASE_INPUT" = "true" ] || [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+
+          git tag -a "$tag" -m "ModbusOpen $tag"
+          # Both or neither: never a bump commit without its tag.
+          git push --atomic origin HEAD:main "$tag"
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "### Releasing $tag" >> "$GITHUB_STEP_SUMMARY"
+
+  create:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
+    steps:
+      - name: create draft release
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          # Draft releases can't be looked up by tag, so search the list.
+          # A re-run reuses the draft from the first attempt.
+          find_id() {
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" \
+              --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n1
+          }
+          id=$(find_id)
+          if [ -z "$id" ]; then
+            flags=(--draft --verify-tag --generate-notes --title "ModbusOpen $TAG")
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
+            id=$(find_id)
+          fi
+          echo "release_id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [prepare, create]
     permissions:
       contents: write
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
-
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: windows-latest
+            args: ""
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: install pnpm
         uses: pnpm/action-setup@v6
@@ -120,9 +209,37 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ inputs.tag }}
-          releaseName: "ModbusOpen ${{ inputs.tag }}"
-          releaseBody: "See the assets below to download and install this version."
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create.outputs.release_id }}
           args: ${{ matrix.args }}
+
+  publish:
+    needs: [prepare, create, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          if [ "$PRERELEASE" = "true" ]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          fi
+          echo "Published [$TAG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+
+  # A release published with GITHUB_TOKEN doesn't fire the `release` event,
+  # so the download site is rebuilt here directly. (`actions: write` is only
+  # used by pages.yml's redispatch job, which is skipped here, but a caller
+  # has to grant every permission its called workflow's jobs ask for.)
+  pages:
+    needs: publish
+    permissions:
+      actions: write
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

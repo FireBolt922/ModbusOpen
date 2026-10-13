@@ -136,27 +136,12 @@ never a `.deb` or `.AppImage`. See §4b below for how to get a Linux binary to s
 needs either CI or an actual Linux machine/container — cross-compiling Tauri's Linux target from
 macOS isn't practically supported (it needs `webkit2gtk`/`glibc` headers that don't exist on macOS).
 
-### 4a. Recommended: let CI build it — manual, pick your platform(s)
+### 4a. Recommended: release from CI
 
-`.github/workflows/release.yml` builds macOS (both Apple Silicon and Intel), Windows, and/or
-Ubuntu and attaches the installers to a draft GitHub release. It only runs when you trigger it —
-nothing builds automatically on push or tag:
-
-1. GitHub → **Actions** tab → **release** workflow → **Run workflow**.
-2. Pick the branch/tag to build *from* (the "Use workflow from" dropdown).
-3. Fill in **tag** — the release tag to publish under, e.g. `v0.1.1` (doesn't need to exist yet;
-   the release step creates it).
-4. Pick **platform** — `all`, `macos`, `windows`, or `ubuntu`, depending on what you actually need
-   right now (a solo Ubuntu run is much faster than waiting on all four jobs).
-5. **Run workflow**. When the job(s) finish, download the `.AppImage`/`.deb` (or `.dmg`/`.msi`)
-   from the draft release's assets.
-
-Same thing from the CLI, if you'd rather not use the web UI (needs `gh` authenticated with
-`repo` scope — this session doesn't have that, so run it from your own machine):
-
-```bash
-gh workflow run release.yml -f tag=v0.1.1 -f platform=ubuntu
-```
+**Actions → release → Run workflow**, pick patch/minor/major. CI tests `main`, bumps the
+version, tags it, builds macOS (Apple Silicon and Intel), Windows and Linux installers, publishes
+the GitHub release and updates the download site at https://firebolt922.github.io/ModbusOpen/.
+Setup and troubleshooting: [RELEASING.md](RELEASING.md).
 
 ### 4b. Building the Ubuntu binary yourself
 
@@ -289,7 +274,8 @@ src-tauri/
   tauri.conf.json           App identifier, window config, bundle targets
 .github/workflows/
   ci.yml                    fmt/clippy/test/build on every push+PR to main
-  release.yml                cross-platform installer build — manual dispatch only, pick platform(s)
+  release.yml                one-click release: test, bump, tag, build all platforms, publish
+  pages.yml                  download site on GitHub Pages (site/ + releases.json)
 testrig/
   slave.py                 Local pymodbus TCP slave for testing the scanner — see §3b
 docs/                      Design docs and protocol reference (read before touching codec/framing)

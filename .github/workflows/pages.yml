@@ -1,0 +1,73 @@
+name: pages
+
+# Builds the download site (site/ + releases.json from the Releases API) and
+# deploys it to GitHub Pages: https://firebolt922.github.io/ModbusOpen/
+#
+# Runs after every release (called from release.yml), when the site itself
+# changes on main, when a release is published/edited by hand, or manually.
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - site/**
+      - scripts/build-site.mjs
+      - .github/workflows/pages.yml
+  release:
+    types: [published, edited, deleted, unpublished]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # `release` events run on the tag ref, which the github-pages environment
+  # won't deploy from (main only). Hand those off to a run on main instead.
+  redispatch:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+  build:
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      - name: build site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/build-site.mjs
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
